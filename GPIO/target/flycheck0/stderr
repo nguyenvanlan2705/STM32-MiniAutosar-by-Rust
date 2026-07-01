@@ -1,0 +1,30 @@
+   0.036951800s  INFO prepare_target{force=false package_id=GPIO v0.1.0 (D:\STM32\Rust\MiniAutosar\GPIO) target="GPIO"}: cargo::core::compiler::fingerprint: fingerprint error for GPIO v0.1.0 (D:\STM32\Rust\MiniAutosar\GPIO)/Check { test: true }/TargetInner { name: "GPIO", doc: true, ..: with_path("D:\\STM32\\Rust\\MiniAutosar\\GPIO\\src\\main.rs", Edition2024) }
+   0.036999800s  INFO prepare_target{force=false package_id=GPIO v0.1.0 (D:\STM32\Rust\MiniAutosar\GPIO) target="GPIO"}: cargo::core::compiler::fingerprint:     err: failed to read `D:\STM32\Rust\MiniAutosar\GPIO\target\thumbv7em-none-eabihf\debug\.fingerprint\GPIO-b1ab6f1bb24eaa7a\test-bin-GPIO`
+
+Caused by:
+    The system cannot find the file specified. (os error 2)
+
+Stack backtrace:
+   0: git_midx_writer_dump
+   1: git_midx_writer_dump
+   2: git_midx_writer_dump
+   3: git_midx_writer_dump
+   4: git_filter_source_repo
+   5: git_filter_source_repo
+   6: git_filter_source_repo
+   7: git_filter_source_repo
+   8: git_filter_source_repo
+   9: git_filter_source_repo
+  10: git_filter_source_repo
+  11: git_libgit2_prerelease
+  12: <unknown>
+  13: <unknown>
+  14: <unknown>
+  15: <unknown>
+  16: git_midx_writer_dump
+  17: git_filter_source_repo
+  18: git_midx_writer_dump
+  19: BaseThreadInitThunk
+  20: RtlUserThreadStart
+    Checking GPIO v0.1.0 (D:\STM32\Rust\MiniAutosar\GPIO)
+error: could not compile `GPIO` (bin "GPIO" test) due to 1 previous error

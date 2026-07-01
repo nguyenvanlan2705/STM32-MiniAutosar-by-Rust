@@ -1,0 +1,33 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "STM32F411 OpenOCD",
+            "type": "cortex-debug",
+            "request": "launch",
+
+            "cwd": "${workspaceFolder}",
+
+            "servertype": "openocd",
+
+            "serverpath": "D:/STM32/xpack-openocd-0.12.0-7-win32-x64/xpack-openocd-0.12.0-7/bin/openocd.exe",
+
+            "gdbPath": "C:/Program Files (x86)/Arm GNU Toolchain arm-none-eabi/14.2 rel1/bin/arm-none-eabi-gdb.exe",
+
+            "configFiles": [
+                "interface/stlink.cfg",
+                "target/stm32f4x.cfg"
+            ],
+            "device": "STM32F411VE",
+
+            "svdFile": "${workspaceFolder}/STM32F411.svd",
+
+            "executable": "${workspaceFolder}/target/thumbv7em-none-eabihf/debug/gpio",
+            
+            "liveWatch": {
+            "enabled": true,
+            "samplesPerSecond": 4
+            }
+        }
+    ]
+}

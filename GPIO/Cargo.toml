@@ -1,0 +1,11 @@
+[package]
+name = "GPIO"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+stm32f4 = { version = "0.16", features = ["stm32f411"] }
+
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+panic-halt = "1.0"
