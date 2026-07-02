@@ -1,0 +1,272 @@
+================================================================================
+ GIẢI THÍCH STARTUP TỰ VIẾT CHO STM32F411 (thay cho cortex-m-rt)
+================================================================================
+
+Mục tiêu: Tự viết phần khởi động (startup) thay vì dùng thư viện cortex-m-rt,
+để hiểu rõ chip Cortex-M4 chạy từ lúc reset đến khi vào hàm main() như thế nào.
+
+Luồng khởi động của Cortex-M4 (rất quan trọng, cần nhớ):
+  1. Cấp nguồn / Reset.
+  2. CPU đọc 2 word đầu tiên ở đầu FLASH (địa chỉ 0x0800_0000):
+       - Word 0: giá trị nạp vào thanh ghi SP (Stack Pointer / MSP).
+       - Word 1: địa chỉ hàm Reset handler.
+  3. CPU nhảy tới Reset handler.
+  4. Reset handler: khởi tạo RAM (.data, .bss) rồi gọi main().
+  5. main() chạy mãi mãi (vòng loop, không được return).
+
+Vì vậy chúng ta cần 3 mảnh ghép:
+  (A) Bảng vector (viết bằng Rust)  -> src/startup/vector_table.rs
+  (B) Linker script (sắp xếp bộ nhớ) -> link.x
+  (C) Cấu hình build (báo dùng link.x, bỏ cortex-m-rt) -> build.rs + Cargo.toml
+Cộng thêm vài chỉnh sửa để "gỡ" cortex-m-rt ra khỏi main.rs và interrupt.
+
+
+================================================================================
+ DANH SÁCH CÁC FILE ĐÃ SỬA / TẠO MỚI
+================================================================================
+
+[TẠO MỚI]  src/startup/vector_table.rs   -> Bảng vector + Reset handler
+[TẠO MỚI]  src/startup/mod.rs            -> Khai báo module startup
+[TẠO MỚI]  link.x                        -> Linker script tự viết
+[SỬA]      build.rs                      -> Nạp link.x tự viết
+[SỬA]      Cargo.toml                    -> Bỏ cortex-m-rt, tắt feature "rt"
+[SỬA]      src/main.rs                   -> Bỏ #[entry], khai báo mod startup
+[SỬA]      src/mcal/interrupcallback.rs  -> Bỏ macro #[interrupt]
+
+
+================================================================================
+ (1) src/startup/vector_table.rs  (TẠO MỚI) -- trái tim của startup
+================================================================================
+
+--- 1.1 union Vector ---------------------------------------------------------
+    #[repr(C)]
+    pub union Vector {
+        pub handler: unsafe extern "C" fn(),
+        pub reserved: usize,
+    }
+
+  TẠI SAO:
+  - Mỗi ô trong bảng vector là 1 word 32-bit. Nó hoặc là ĐỊA CHỈ 1 HÀM handler,
+    hoặc là ô "Reserved" (giá trị 0) mà ST để trống.
+  - Dùng `union` để 1 ô có thể là con trỏ hàm HOẶC số 0, cùng kích thước 4 byte.
+  - `#[repr(C)]` ép layout giống C để phần cứng đọc đúng thứ tự/kích thước.
+  - `extern "C"` = quy ước gọi hàm chuẩn C/ARM (phần cứng cần đúng ABI này).
+
+
+--- 1.2 Khai báo các ký hiệu từ linker --------------------------------------
+    unsafe extern "C" {
+        static mut _sbss: u32;   // đầu vùng .bss
+        static mut _ebss: u32;   // cuối vùng .bss
+        static mut _sdata: u32;  // đầu vùng .data (trong RAM)
+        static mut _edata: u32;  // cuối vùng .data (trong RAM)
+        static _sidata: u32;     // ảnh khởi tạo của .data (nằm trong FLASH)
+    }
+
+  TẠI SAO:
+  - Đây KHÔNG phải biến thật, mà là các ĐỊA CHỈ (mốc ranh giới) do linker script
+    tính ra lúc link. Rust cần "khai báo trước" để dùng địa chỉ của chúng.
+  - Reset handler cần biết vùng .data/.bss bắt đầu và kết thúc ở đâu để khởi tạo.
+
+
+--- 1.3 Reset handler -------------------------------------------------------
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn Reset() -> ! { ... crate::main() }
+
+  TẠI SAO từng phần:
+  - `#[unsafe(no_mangle)]`: giữ nguyên tên "Reset" (không bị đổi tên rối rắm),
+    để linker script `ENTRY(Reset)` và bảng vector tìm được đúng hàm này.
+  - `extern "C"`: đúng ABI để phần cứng nhảy vào.
+  - `-> !`: hàm KHÔNG BAO GIỜ return (vì sau reset không có chỗ nào để quay về).
+
+  Bên trong làm 4 việc theo đúng thứ tự:
+
+    BƯỚC 1 - Xoá .bss về 0:
+      Biến toàn cục chưa gán giá trị (vd: static X: u32 = 0) nằm ở .bss.
+      Chuẩn C/Rust yêu cầu chúng = 0 khi chương trình bắt đầu. RAM lúc mới bật
+      nguồn chứa rác => phải tự tay ghi 0 từ _sbss đến _ebss.
+
+    BƯỚC 2 - Copy .data từ FLASH vào RAM:
+      Biến toàn cục CÓ giá trị khởi tạo (vd: static Y: u32 = 5) thì:
+        * Giá trị "5" được lưu trong FLASH (tại _sidata) vì RAM mất điện là mất.
+        * Lúc chạy, biến sống trong RAM (từ _sdata đến _edata).
+      => Reset handler copy giá trị khởi tạo từ FLASH vào RAM.
+
+    BƯỚC 3 - Bật FPU (đơn vị dấu phẩy động):
+      STM32F411 là Cortex-M4F (có FPU). Sau reset FPU đang TẮT; nếu code dùng
+      f32/f64 mà FPU tắt sẽ gây lỗi (fault). Ghi bit CP10/CP11 = full access
+      trong thanh ghi CPACR (0xE000_ED88) để bật.
+      dsb()/isb(): rào chắn lệnh, đảm bảo lệnh bật FPU có hiệu lực trước khi chạy tiếp.
+
+    BƯỚC 4 - Gọi crate::main():
+      Chuyển quyền điều khiển cho chương trình ứng dụng của bạn.
+
+  Vì sao dùng `&raw mut _sbss` / `&raw const ...` và `write_volatile`:
+  - `&raw` = lấy con trỏ tới static mut mà không tạo tham chiếu (an toàn hơn ở
+    Rust edition 2024, tránh undefined behavior).
+  - `write_volatile` = ép trình biên dịch KHÔNG tối ưu bỏ lệnh ghi (bắt buộc khi
+    làm việc trực tiếp với bộ nhớ/phần cứng).
+
+
+--- 1.4 Các exception handler (NMI, HardFault, ...) --------------------------
+    #[unsafe(no_mangle)]
+    pub extern "C" fn HardFault() { loop { nop() } }
+
+  TẠI SAO:
+  - Cortex-M có sẵn các "exception" lõi (NMI, HardFault, SVCall, PendSV, SysTick...).
+  - Ở đây để mặc định là vòng lặp vô hạn (treo máy). Khi debug, nếu chip dừng
+    trong HardFault nghĩa là code đã gặp lỗi nghiêm trọng (vd: truy cập sai địa chỉ).
+  - `DefaultHandler`: dùng chung cho mọi ngắt ngoại vi mà ta CHƯA nối riêng.
+
+
+--- 1.5 Ba mảng đặt vào section đặc biệt của FLASH ---------------------------
+    #[unsafe(link_section = ".vector_table.reset_vector")]
+    pub static __RESET_VECTOR: unsafe extern "C" fn() -> ! = Reset;
+
+    #[unsafe(link_section = ".vector_table.exceptions")]
+    pub static __EXCEPTIONS: [Vector; 14] = [ ... ];
+
+    #[unsafe(link_section = ".vector_table.interrupts")]
+    pub static __INTERRUPTS: [Vector; 86] = [ ... ];
+
+  TẠI SAO:
+  - `link_section = "..."`: ép các mảng này nằm vào đúng section mà link.x đã
+    sắp ở ĐẦU FLASH, theo đúng thứ tự phần cứng mong đợi:
+        [SP] [Reset] [14 exception] [86 interrupt]
+  - 14 exception = các vị trí 2..15 của bảng vector (NMI ... SysTick).
+  - 86 interrupt = IRQ 0..85, đúng số ngắt ngoại vi của STM32F411
+    (WWDG, PVD, EXTI0..4, DMA, ADC, TIMx, I2Cx, SPIx, USARTx, OTG_FS, FPU, SPI4/5...).
+    Ô nào ST để trống thì dùng `reserved: 0`.
+  - EXTI0 (index 6) được nối tới `interrupcallback::exti0` là ngắt nút nhấn.
+  - Word đầu tiên (SP) KHÔNG nằm ở đây mà do link.x tự phát ra (xem mục 3).
+
+
+================================================================================
+ (2) src/startup/mod.rs  (TẠO MỚI)
+================================================================================
+    pub mod vector_table;
+
+  TẠI SAO:
+  - Rust cần file mod.rs để "gộp" thư mục startup/ thành một module.
+  - Nhờ dòng này, main.rs có thể `mod startup;` và code trong vector_table.rs
+    mới được biên dịch (nếu không khai báo, file sẽ bị bỏ qua hoàn toàn).
+
+
+================================================================================
+ (3) link.x  (TẠO MỚI) -- chỉ dẫn cho linker sắp xếp bộ nhớ
+================================================================================
+
+  INCLUDE memory.x
+      -> Nạp định nghĩa vùng FLASH (0x0800_0000, 512K) và RAM (0x2000_0000, 128K).
+
+  ENTRY(Reset);
+      -> Khai báo điểm vào chương trình là hàm Reset (khớp với hàm ở mục 1.3).
+
+  EXTERN(__RESET_VECTOR); EXTERN(__EXCEPTIONS); EXTERN(__INTERRUPTS);
+      -> BẮT BUỘC giữ lại 3 mảng bảng vector. Nếu không, linker thấy "không ai
+         gọi trực tiếp" và sẽ xoá mất -> chip mất bảng vector -> không boot được.
+
+  PROVIDE(_stack_start = ORIGIN(RAM) + LENGTH(RAM));
+      -> Đỉnh stack = địa chỉ cuối RAM. Stack của Cortex-M lớn dần XUỐNG
+         (địa chỉ giảm), nên bắt đầu từ đỉnh.
+
+  SECTIONS { .vector_table ORIGIN(FLASH) : {
+        LONG(_stack_start & 0xFFFFFFF8);      // <-- Word 0: giá trị SP ban đầu
+        KEEP(*(.vector_table.reset_vector));  // <-- Word 1: địa chỉ Reset
+        KEEP(*(.vector_table.exceptions));    // 14 exception
+        KEEP(*(.vector_table.interrupts));    // 86 interrupt
+      } > FLASH ...
+
+  TẠI SAO:
+  - Đặt `.vector_table` tại ORIGIN(FLASH) = đúng chỗ CPU tìm bảng vector khi reset.
+  - `LONG(...)` tự chèn word đầu (giá trị SP). `& 0xFFFFFFF8` để căn 8 byte
+    (yêu cầu của kiến trúc ARM cho stack).
+  - `KEEP(...)` = đừng tối ưu xoá, dù trông như không dùng.
+  - Thứ tự các dòng chính là thứ tự các word trong bảng vector.
+
+  Các section còn lại:
+    .text  -> mã lệnh + hằng số (rodata), để trong FLASH.
+    .data  -> "> RAM AT > FLASH": chạy ở RAM nhưng ảnh khởi tạo lưu trong FLASH
+              (đúng như Reset handler bước 2 đã copy).
+    _sidata = LOADADDR(.data) -> địa chỉ ảnh .data trong FLASH.
+    .bss   -> NOLOAD: chỉ chiếm chỗ RAM, không lưu gì trong FLASH (Reset xoá 0).
+    /DISCARD/ -> vứt các section unwind (.ARM.exidx...) không cần cho bare-metal.
+
+  => Tên các mốc _sbss/_ebss/_sdata/_edata/_sidata/_stack_start ở đây KHỚP
+     với phần khai báo `extern` trong vector_table.rs (mục 1.2).
+
+
+================================================================================
+ (4) build.rs  (SỬA)
+================================================================================
+  Thêm:
+    File::create(out.join("link.x")).write_all(include_bytes!("link.x"));
+    println!("cargo:rerun-if-changed=link.x");
+    (giữ) println!("cargo:rustc-link-arg=-Tlink.x");
+
+  TẠI SAO:
+  - Trước đây `-Tlink.x` dùng file link.x của thư viện cortex-m-rt.
+  - Giờ ta copy link.x TỰ VIẾT vào thư mục build (OUT_DIR) để trình link tìm thấy
+    nó thay cho bản của cortex-m-rt.
+  - `rerun-if-changed`: sửa link.x thì build lại (không bị cache cũ).
+
+
+================================================================================
+ (5) Cargo.toml  (SỬA)
+================================================================================
+  - XOÁ dòng:   cortex-m-rt = "0.7"
+  - ĐỔI:        stm32f4 = { ..., default-features = false }
+
+  TẠI SAO:
+  - Bỏ cortex-m-rt vì ta đã tự viết startup, không cần thư viện này nữa.
+  - `default-features = false` cho stm32f4 để TẮT feature "rt". Feature "rt"
+    của PAC sẽ tự sinh MỘT bảng vector khác -> nếu bật sẽ ĐỤNG (xung đột) với
+    bảng vector ta tự viết. Tắt đi để chỉ còn duy nhất bảng của mình.
+  - Vẫn giữ cortex-m (dùng nop/dsb/isb) và rtt-target (in log), panic-halt.
+
+
+================================================================================
+ (6) src/main.rs  (SỬA)
+================================================================================
+  - XOÁ:  use cortex_m_rt::entry;   và   #[entry]
+  - ĐỔI:  fn main() -> !   thành   pub fn main() -> !
+  - THÊM: mod startup;
+
+  TẠI SAO:
+  - `#[entry]` là macro của cortex-m-rt để đánh dấu hàm vào. Ta không dùng nữa
+    vì Reset handler tự viết đã trực tiếp gọi `crate::main()`.
+  - `pub fn main`: để Reset handler (ở module startup) gọi được sang.
+  - `mod startup;`: để code startup được biên dịch và liên kết vào firmware.
+  - Vẫn giữ `#![no_main]` vì ta KHÔNG dùng hàm main chuẩn của Rust; điểm vào
+    thật sự là Reset trong bảng vector.
+
+
+================================================================================
+ (7) src/mcal/interrupcallback.rs  (SỬA)
+================================================================================
+  - ĐỔI:  #[interrupt] fn exti0()   thành   pub extern "C" fn exti0()
+
+  TẠI SAO:
+  - `#[interrupt]` là macro do cortex-m-rt/PAC cung cấp (đi kèm feature "rt" đã
+    bị tắt) -> không còn dùng được.
+  - Chuyển thành hàm `extern "C"` bình thường, rồi TỰ TAY nối nó vào ô EXTI0
+    (index 6) của mảng __INTERRUPTS trong vector_table.rs.
+  - `pub`: để bảng vector ở module startup tham chiếu tới được.
+
+
+================================================================================
+ CÁCH MỞ RỘNG (để bạn tự luyện tập)
+================================================================================
+  Muốn thêm handler cho một ngắt khác, ví dụ TIM2 (IRQ 28) hoặc SysTick:
+    B1. Viết hàm:   pub extern "C" fn tim2() { ... }
+    B2. Trong vector_table.rs, thay ô tương ứng:
+          Vector { handler: DefaultHandler },  // 28 TIM2
+        thành:
+          Vector { handler: crate::.../tim2 }, // 28 TIM2
+  Với exception lõi (SysTick, PendSV...) thì sửa nội dung hàm cùng tên
+  trong mảng __EXCEPTIONS.
+
+  Ghi nhớ mấu chốt:
+    * Bảng vector = danh bạ địa chỉ handler, đặt ĐẦU FLASH, đúng thứ tự.
+    * Reset handler = dọn RAM (.bss=0, copy .data) + bật FPU + gọi main.
+    * link.x = quyết định cái gì nằm ở đâu trong FLASH/RAM.
+================================================================================

@@ -1,16 +1,39 @@
 // GPIO/src/mcal/port.rs
-// This file contains the definitions for the GPIO port and pin configurations.
-// It defines the enums for ports, pins, modes, output types, and output speeds.
-// The enums are used to configure the GPIO pins in the STM32 microcontroller.
-// The port enum defines the available GPIO ports (A to H).
+// This file is part of the GPIO project.
 use crate::register::gpio_type::{PORT, PIN, MODE, OUTPUTTYPE, OUTPUTSPEED, PULL, PortPinConfig, PortConfig};
 use crate::register::gpio::{port_write_mode, port_write_outputtype, port_write_outputspeed, 
                             port_write_pull,enable_portx_clock, get_port_register};
+
+// The port_init function initializes the GPIO ports based on the configuration defined in PORT_CONFIG.
 const PORT_CONFIG: PortConfig = PortConfig {
     pins: &[
         PortPinConfig {
             port: PORT::D,
             pin: PIN::P12,
+            mode: MODE::OUTPUT,
+            output_type: OUTPUTTYPE::PUSHPULL,
+            output_speed: OUTPUTSPEED::HIGH,
+            pull: PULL::NONE,
+        },
+        PortPinConfig {
+            port: PORT::D,
+            pin: PIN::P13,
+            mode: MODE::OUTPUT,
+            output_type: OUTPUTTYPE::PUSHPULL,
+            output_speed: OUTPUTSPEED::HIGH,
+            pull: PULL::NONE,
+        },
+        PortPinConfig {
+            port: PORT::D,
+            pin: PIN::P14,
+            mode: MODE::OUTPUT,
+            output_type: OUTPUTTYPE::PUSHPULL,
+            output_speed: OUTPUTSPEED::HIGH,
+            pull: PULL::NONE,
+        },
+        PortPinConfig {
+            port: PORT::D,
+            pin: PIN::P15,
             mode: MODE::OUTPUT,
             output_type: OUTPUTTYPE::PUSHPULL,
             output_speed: OUTPUTSPEED::HIGH,
@@ -26,6 +49,7 @@ const PORT_CONFIG: PortConfig = PortConfig {
         },
     ],
 };
+
 pub fn port_init() {
     for pin_config in PORT_CONFIG.pins {
         // Enable the clock for the specified port

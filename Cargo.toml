@@ -1,11 +1,13 @@
 [package]
-name = "GPIO"
+name = "STM32MiniAutosarbyRust"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-stm32f4 = { version = "0.16", features = ["stm32f411"] }
+# default-features = false để bỏ feature "rt" của PAC (không dùng vector table
+# của cortex-m-rt nữa; startup tự viết trong src/startup).
+stm32f4 = { version = "0.16", features = ["stm32f411"], default-features = false }
 
-cortex-m = "0.7"
-cortex-m-rt = "0.7"
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 panic-halt = "1.0"
+rtt-target = "0.6"

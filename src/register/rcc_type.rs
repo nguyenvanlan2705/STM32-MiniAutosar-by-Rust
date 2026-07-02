@@ -1,8 +1,14 @@
 #[repr(C)]
 pub struct RCCRegister{
     pub rcc_cr : u32,
-    reserved0: [u32;11],
+    pub rcc_pllcfgr : u32,
+    pub rcc_cfgr : u32,
+    reserved1: [u32;9],
     pub rcc_ahb1enr : u32,
+    pub rcc_ahb2enr : u32,
+    reserved2: [u32;2],
+    pub rcc_apb1enr : u32,
+    pub rcc_apb2enr : u32,
 }
 const RCC: *mut RCCRegister = 0x4002_3800 as *mut RCCRegister;
 pub fn get_rcc_register() -> &'static mut RCCRegister {

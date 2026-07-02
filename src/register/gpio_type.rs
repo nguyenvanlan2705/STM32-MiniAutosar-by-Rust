@@ -76,6 +76,7 @@ pub struct PortConfig{
     pub pins: &'static [PortPinConfig]
 }
 
+#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PortRegister{
     pub moder : u32,
@@ -89,12 +90,12 @@ pub struct PortRegister{
     pub afrl : u32,
     pub afrh : u32,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Level {
-    Low,
-    High,
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Dio_LevelType{
+    LOW = 0,
+    HIGH = 1,
 }
-
-
 
 

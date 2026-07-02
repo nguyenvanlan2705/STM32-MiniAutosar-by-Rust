@@ -22,7 +22,7 @@
 
             "svdFile": "${workspaceFolder}/STM32F411.svd",
 
-            "executable": "${workspaceFolder}/target/thumbv7em-none-eabihf/debug/gpio",
+            "executable": "${workspaceFolder}/target/thumbv7em-none-eabihf/debug/STM32MiniAutosarbyRust",
             
             "liveWatch": {
             "enabled": true,
