@@ -2,7 +2,7 @@
 
 use crate::mcal::dio_type::{Dio_ChannelType, Dio_ConfigType, Dio_ChannelConfig, Dio_GroupConfigType, Dio_ChannelGroupType};
 use crate::register::gpio_type::{PORT, PIN, Dio_LevelType};
-use crate::register::dio::{dio_read, dio_toggle, dio_write, dio_write_port, dio_read_port, dio_read_output};
+use crate::register::dio::{dio_read, dio_toggle, dio_write, dio_write_port, dio_read_output, dio_read_output_port};
 const DIO_CHANNEL_CONFIG : Dio_ConfigType = Dio_ConfigType{
     channels: &[
         Dio_ChannelConfig{
@@ -57,14 +57,6 @@ fn get_channel_cfg_index(channel: Dio_ChannelType) -> usize {
     }
     0xffff // Return an invalid index if the channel is not found
 }
-fn get_channelgroup_cfg_index(port: PORT) -> usize {
-    for (index, group_cfg) in DIO_CHANNELGROUP_CFG.groups.iter().enumerate() {
-        if group_cfg.port == port { 
-            return index;
-        }
-    }
-    0xffff // Return an invalid index if the channel is not found
-}
 pub fn dio_readchannel(channel: Dio_ChannelType) -> Dio_LevelType{
     let index = get_channel_cfg_index(channel);
     let channel_cfg = &DIO_CHANNEL_CONFIG.channels[index];
@@ -90,15 +82,14 @@ pub fn dio_readchannel_output(channel: Dio_ChannelType) -> Dio_LevelType{
     level
 }
 pub fn dio_writechannelgroup(group: Dio_ChannelGroupType, value: u32){
-    let index = get_channelgroup_cfg_index(group.port);
-    let group_cfg = &DIO_CHANNELGROUP_CFG.groups[index];
-    let shifted_value = (value as u32) << group_cfg.offset;
-    dio_write_port(group_cfg.port, shifted_value);
+    let current_value = dio_read_output_port(group.port);
+    let cleared_value = current_value & !(group.mask as u32);
+    let shifted_value = ((value as u32) << group.offset) & (group.mask as u32);
+    let new_value = cleared_value | shifted_value;
+    dio_write_port(group.port, new_value);
 }
 pub fn dio_readchannelgroup(group: Dio_ChannelGroupType) -> u32{
-    let index = get_channelgroup_cfg_index(group.port);
-    let group_cfg = &DIO_CHANNELGROUP_CFG.groups[index];
-    let port_value = dio_read_port(group_cfg.port);
-    let masked_value = (port_value & (group_cfg.mask as u32)) >> group_cfg.offset;
+    let port_value = dio_read_output_port(group.port);
+    let masked_value = (port_value & (group.mask as u32)) >> group.offset;
     masked_value
 }

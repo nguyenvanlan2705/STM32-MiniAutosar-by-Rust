@@ -13,6 +13,9 @@ Implemented active APIs:
 - `dio_readchannel`
 - `dio_writechannel`
 - `dio_flipchannel`
+- `dio_readchannel_output`
+- `dio_readchannelgroup`
+- `dio_writechannelgroup`
 
 Configured logical channels:
 
@@ -24,7 +27,42 @@ Configured logical channels:
 | `LedBlue` | PD15 |
 | `UserButton` | PA0 |
 
-The current LED demo writes only through these Dio logical channels. The channel configuration currently lives inside `src/mcal/dio.rs`; a future cleanup should move it to `src/config/dio_cfg.rs`.
+The channel configuration currently lives inside `src/mcal/dio.rs`; a future cleanup should move it to `src/config/dio_cfg.rs`.
+
+Channel group configuration is also present in `src/mcal/dio.rs`.
+
+Current groups:
+
+| Logical group in IoHwAb | Port | Mask | Offset |
+|---|---|---:|---:|
+| `LedGroup::RedYellow` | D | `0b1100_0000_0000_0000` | 12 |
+| `LedGroup::BlueOrange` | D | `0b0011_0000_0000_0000` | 12 |
+
+Current note:
+
+```text
+Dio_WriteChannelGroup now preserves bits outside the group mask.
+It reads ODR, clears only group bits, inserts the shifted value, then writes the new port value through ODR.
+```
+
+Current channel group write flow:
+
+```text
+ioif_write_tx_group_state(0x300, value)
+    |
+    +-- IoIf group PDU 0x300 -> LED_GROUP_RED_YELLOW
+    +-- IoHwAb LedGroup::RedYellow -> Dio_ChannelGroupType
+    |
+    v
+dio_writechannelgroup(group, value)
+    |
+    +-- read current output latch from GPIOx_ODR
+    +-- clear only the bits selected by group.mask
+    +-- shift value by group.offset
+    +-- mask shifted value so it cannot leak outside the group
+    +-- OR cleared value and shifted value
+    +-- write final full-port value to GPIOx_ODR
+```
 
 ## Main AUTOSAR-like APIs
 
@@ -103,6 +141,18 @@ Read GPIOx_IDR:
 GPIOx_IDR bit n
 ```
 
+Code flow:
+
+```text
+dio_readchannel(Dio_ChannelType::UserButton)
+    |
+    +-- find channel config
+    +-- UserButton -> PORTA, PIN0
+    +-- register::dio::dio_read(PORTA, PIN0)
+    +-- read GPIOA_IDR bit 0
+    +-- return HIGH or LOW
+```
+
 ### Step 3 - Write output
 
 Write GPIOx_BSRR:
@@ -117,6 +167,25 @@ Important:
 ```text
 GPIOx_BSRR is write-only.
 Do not read BSRR.
+```
+
+Code flow:
+
+```text
+dio_writechannel(Dio_ChannelType::LedRed, HIGH)
+    |
+    +-- find channel config
+    +-- LedRed -> PORTD, PIN14
+    +-- register::dio::dio_write(PORTD, PIN14, HIGH)
+    +-- write GPIOx_BSRR bit 14
+```
+
+For LOW:
+
+```text
+dio_writechannel(Dio_ChannelType::LedRed, LOW)
+    |
+    +-- write GPIOx_BSRR bit 14 + 16
 ```
 
 ## Toggle Logic
@@ -136,16 +205,119 @@ If low  -> set via BSRR
 | Dio_ReadPort | IDR |
 | Dio_ReadOutputPort | ODR |
 
+Use `IDR` when you want the physical pin level.
+
+Use `ODR` when you want the output latch value.
+
+This distinction matters because an output pin may be driven by the latch, but the physical level can still be affected by board wiring or external circuitry.
+
 ## Channel Group
 
 For channel group APIs, use:
 
 ```rust
 pub struct Dio_ChannelGroupType {
-    pub port: Dio_PortType,
+    pub port: PORT,
     pub mask: u16,
     pub offset: u8,
 }
 ```
 
 Use `u16` because STM32 GPIO has 16 pins.
+
+For the STM32F4 Discovery LEDs:
+
+```text
+PD12 Yellow
+PD13 Orange
+PD14 Red
+PD15 Blue
+```
+
+A full LED group would be:
+
+```rust
+Dio_ChannelGroupType {
+    port: PORT::D,
+    mask: 0xF000,
+    offset: 12,
+}
+```
+
+The current code experiments with smaller LED groups.
+
+Example with current `LedGroup::RedYellow`:
+
+```text
+mask   = 0b1100_0000_0000_0000
+offset = 12
+value  = 0b0011
+```
+
+The value is shifted:
+
+```text
+value << offset = 0b0011_0000_0000_0000
+```
+
+Then masked:
+
+```text
+(value << offset) & mask = 0b0000_0000_0000_0000
+```
+
+So for this group, only the bits included by `mask` can change.
+
+Important note:
+
+```text
+mask and offset must describe the same bit field.
+If the mask starts at PD14 but offset is 12, low value bits may not land where you expect.
+```
+
+## BSRR, ODR, and IDR
+
+Important GPIO behavior:
+
+```text
+Writing GPIOx_BSRR bit 0..15 sets the output latch.
+Writing GPIOx_BSRR bit 16..31 resets the output latch.
+The output latch is reflected in ODR.
+IDR reads the physical pin level.
+```
+
+So:
+
+```text
+BSRR set   -> ODR bit becomes 1
+BSRR reset -> ODR bit becomes 0
+```
+
+`BSRR` is a write-only command register. It does not need to be cleared after writing.
+
+## Common Mistakes
+
+### 1. Using Dio before Port_Init
+
+Dio assumes the pin is already configured. If PD12 is still input mode, writing DIO will not behave like an LED output.
+
+Correct order:
+
+```text
+Port_Init()
+then Dio_WriteChannel()
+```
+
+### 2. Reading BSRR
+
+`BSRR` is a command register. Read `ODR` if you want output state.
+
+### 3. Writing a group without preserving other pins
+
+Avoid writing a raw full-port value unless that is really intended. Channel group writes should update only selected mask bits.
+
+### 4. Mixing IDR and ODR meaning
+
+For input buttons, read `IDR`.
+
+For output LEDs, read `ODR` when checking the latch state.

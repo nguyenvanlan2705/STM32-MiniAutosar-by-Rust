@@ -127,6 +127,54 @@ Port_Init()
           +-- configure PUPDR
 ```
 
+More detailed register flow for one pin:
+
+```text
+PortPinConfig
+    |
+    +-- port + pin select GPIO register block
+    +-- enable clock in RCC_AHB1ENR
+    +-- update two MODER bits for the pin
+    +-- update one OTYPER bit for the pin
+    +-- update two OSPEEDR bits for the pin
+    +-- update two PUPDR bits for the pin
+```
+
+Example: configure PD12 as LED output.
+
+```text
+Pin number = 12
+
+MODER shift   = 12 * 2 = 24
+OSPEEDR shift = 12 * 2 = 24
+PUPDR shift   = 12 * 2 = 24
+OTYPER shift  = 12
+```
+
+Registers touched:
+
+```text
+RCC_AHB1ENR.GPIODEN = 1
+GPIOD_MODER[25:24]  = 01 output
+GPIOD_OTYPER[12]    = 0 push-pull
+GPIOD_OSPEEDR[25:24]= selected speed
+GPIOD_PUPDR[25:24]  = 00 no pull
+```
+
+Example: configure PA0 as button input.
+
+```text
+RCC_AHB1ENR.GPIOAEN = 1
+GPIOA_MODER[1:0]    = 00 input
+GPIOA_PUPDR[1:0]    = 10 pulldown
+```
+
+After this, Dio can read:
+
+```text
+GPIOA_IDR bit 0
+```
+
 ## Important Lessons
 
 ### `#[repr(C)]`
@@ -149,3 +197,50 @@ core::ptr::write_volatile()
 ```
 
 for hardware registers.
+
+### Read-modify-write
+
+Most GPIO config registers contain multiple pins in the same register.
+
+When configuring one pin, do not overwrite the whole register blindly.
+
+Correct idea:
+
+```text
+1. read current register value
+2. clear only the target pin field
+3. OR in the new field value
+4. write the updated value back
+```
+
+Example for a two-bit field:
+
+```text
+clear_mask = !(0b11 << shift)
+new_value  = (old_value & clear_mask) | (mode << shift)
+```
+
+## Common Mistakes
+
+### 1. Forgetting the GPIO clock
+
+If `RCC_AHB1ENR.GPIOxEN` is not enabled, GPIO register writes may not take effect.
+
+### 2. Configuring output in Dio
+
+Dio should not configure pin mode. Keep mode setup in Port.
+
+### 3. Wrong pull direction for button
+
+The user button is expected as:
+
+```text
+Not pressed -> LOW
+Pressed     -> HIGH
+```
+
+So PA0 currently uses pulldown.
+
+### 4. Reusing output settings for input pins
+
+For input pins, `OTYPER` and `OSPEEDR` are usually not meaningful for the signal read path, but the config struct may still carry values for consistency.

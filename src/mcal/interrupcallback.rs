@@ -10,7 +10,7 @@ pub fn exti_irq_handler(line: EXTILINE) {
         }
     }
 }
-
+/// Hàm xử lý ngắt EXTI cho nhiều dòng, được gọi từ vector table.
 pub fn exti_group_irq_handler(lines: &[EXTILINE]) {
     for &line in lines {
         if is_exti_pending(line) {

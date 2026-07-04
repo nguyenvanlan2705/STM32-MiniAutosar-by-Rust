@@ -6,7 +6,7 @@ use crate::register::nvic::{nvic_enable_irq, nvic_disable_irq};
 use crate::register::syscfg_type::{EXTILINE};
 use crate::register::syscfg::{enable_syscfg_clock, configure_exti_line};
 use crate::register::gpio_type::{PORT};
-use crate::bsw::iohwab::button::button_callback;
+use crate::bsw::iohwab::button::button_exti_notification;
 
 // Định nghĩa mảng callback cho các dòng EXTI
 pub static mut EXTI_CALLBACK: [Option<fn()>; 16] = [None; 16];
@@ -38,7 +38,7 @@ const EXTI_CONFIG: Exti_ConfigType = Exti_ConfigType {
             line: EXTILINE::LINE0,
             trigger: crate::register::exti_type::Exti_TriggerType::RISING,
             enabled: true,
-            callbackfn: Some(button_callback),
+            callbackfn: Some(button_exti_notification),
         }
     ]
 }; 

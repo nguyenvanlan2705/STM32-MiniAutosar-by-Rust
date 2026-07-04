@@ -16,16 +16,16 @@ Main goals:
 ## Current Architecture
 
 ```text
-Application                  scaffolded; current demo logic still lives in main.rs
+Application                  scaffolded; LED pattern logic still lives in main.rs
     |
     v
 RTE                          scaffolded; not active in main.rs yet
     |
     v
-BSW                          scaffolded; not active in main.rs yet
+BSW                          partially active
     |
-    +-- IoHwAb              scaffolded
-    +-- IoIf                future idea, inspired by CanIf
+    +-- IoHwAb              active for button/LED demo
+    +-- IoIf                RX indication and TX confirmation draft active for GPIO demo
     +-- PduR / Com          future idea
     |
     v
@@ -75,10 +75,31 @@ EXTI0_IRQHandler in startup vector table
 MCAL EXTI interrupt dispatcher
     |
     v
-registered callback increments COUNT
+registered callback enters IoHwAb button module
     |
     v
-main loop writes LED pattern through MCAL Dio
+IoHwAb increments BUTTON_COUNT
+    |
+    v
+IoHwAb calls IoIf RxIndication for PDU 0x100
+    |
+    v
+IoIf marks the RX PDU indication as active
+    |
+    v
+main loop reads button value through IoIf RX
+    |
+    v
+main loop writes LED single/group state through IoIf TX PDU IDs
+    |
+    v
+IoIf maps TX PDU IDs to IoHwAb LED or LED group requests
+    |
+    v
+IoHwAb maps LED requests to MCAL Dio
+    |
+    v
+IoIf records TX confirmation for the PDU
 ```
 
 Current demo hardware mapping:
@@ -86,10 +107,10 @@ Current demo hardware mapping:
 | Logical role | STM32 pin | Current layer |
 |---|---:|---|
 | User button | PA0 | Port + Exti + Dio mapping |
-| Yellow LED | PD12 | Port + Dio |
-| Orange LED | PD13 | Port + Dio |
-| Red LED | PD14 | Port + Dio |
-| Blue LED | PD15 | Port + Dio |
+| Yellow LED | PD12 | IoIf TX -> IoHwAb LED -> Dio -> GPIO |
+| Orange LED | PD13 | IoIf TX -> IoHwAb LED -> Dio -> GPIO |
+| Red LED | PD14 | IoIf TX -> IoHwAb LED -> Dio -> GPIO |
+| Blue LED | PD15 | IoIf TX -> IoHwAb LED -> Dio -> GPIO |
 
 ## Current Build Status
 
@@ -99,7 +120,7 @@ The project currently passes:
 cargo check --target thumbv7em-none-eabihf
 ```
 
-There are warnings for AUTOSAR-style names such as `Dio_ChannelType` and for future APIs that are defined but not used yet.
+`target/` build output is ignored through the root `.gitignore`.
 
 ## Important Design Rules
 
@@ -127,6 +148,28 @@ Later:
 ```rust
 IoHwAb_SetLed(LedId::Red, LedState::On);
 ```
+
+Current demo routes normal LED writes through IoIf TX:
+
+```rust
+ioif_write_tx_state(0x200, IoIf_OutputType::STD_ON);
+ioif_write_tx_state(0x203, IoIf_OutputType::STD_OFF);
+```
+
+Current demo also routes grouped LED writes through IoIf TX group PDUs:
+
+```rust
+ioif_write_tx_group_state(0x300, 0b1100);
+ioif_write_tx_group_state(0x301, 0b0011);
+```
+
+The button count path is also routed through IoIf RX:
+
+```text
+main.rs -> IoIf read API -> IoHwAb button state
+```
+
+IoIf TX currently has separate config structs for single-channel TX PDUs and group TX PDUs. Both use the same `ioif_txconfirmation()` entry point.
 
 ### 2. Register layer only maps hardware
 
@@ -182,10 +225,16 @@ GPIO/RCC/EXTI/NVIC access is defined from the STM32F411 Reference Manual.
 GPIO + EXTI demo
     |
     v
-IoHwAb
+IoHwAb button/LED adapter
     |
     v
-IoIf
+IoIf RX indication for button event
+    |
+    v
+IoIf TX confirmation for LED output
+    |
+    v
+RTE/App runnable split
     |
     v
 UART as Virtual Bus

@@ -111,7 +111,11 @@ Implemented DIO APIs inspired by AUTOSAR:
 - `Dio_FlipChannel`
 - `Dio_ReadPort`
 - `Dio_WritePort`
+- `Dio_ReadOutputChannel`
+- `Dio_ReadChannelGroup`
+- `Dio_WriteChannelGroup` draft
 - Channel config and logical channel mapping
+- Channel group config for LED groups on port D
 
 Important design decision:
 
@@ -139,7 +143,12 @@ Implemented the first EXTI driver path:
 - NVIC enable
 - Callback table for EXTI lines
 - PA0 -> EXTI0 configuration
-- EXTI0 button callback increments a counter used by the LED demo
+- Notification-style APIs:
+  - `exti_enable_notification`
+  - `exti_disable_notification`
+- Config-based callback registration through `callbackfn`
+- Pending check helper for grouped interrupt dispatch
+- EXTI0 button callback is now routed to IoHwAb button logic
 
 Important rule:
 
@@ -162,6 +171,9 @@ Replaced the `cortex-m-rt` startup path with custom startup code:
 - `.data` copy
 - EXTI0 vector mapping
 - EXTI0 vector dispatches into the MCAL EXTI handler
+- EXTI1..EXTI4 vector handlers
+- EXTI9_5 and EXTI15_10 group handlers
+- Group handlers dispatch only pending EXTI lines
 
 Important design rule:
 
@@ -206,10 +218,13 @@ EXTI0_IRQHandler()
 mcal::interrupcallback::exti_irq_handler(LINE0)
     |
     v
-registered button callback increments COUNT
+registered callback enters IoHwAb button logic
     |
     v
-main loop writes LED pattern through Dio
+IoHwAb increments BUTTON_COUNT
+    |
+    v
+main loop reads IoHwAb button count and writes LED pattern through IoHwAb LED APIs
 ```
 
 Hardware mapping currently used by the demo:
@@ -226,9 +241,101 @@ Build status:
 cargo check --target thumbv7em-none-eabihf
 ```
 
-passes. Current warnings are mostly naming-style warnings from AUTOSAR-like names and unused future APIs.
+passes.
 
-## Phase 9 - Future BSW/RTE Idea
+## Phase 9 - IoHwAb Introduction
+
+Started moving demo behavior above MCAL:
+
+- Added `src/bsw/iohwab/button.rs`.
+- Added `src/bsw/iohwab/led.rs`.
+- Added `src/bsw/iohwab/iohwab_type.rs`.
+- Button EXTI callback now increments `BUTTON_COUNT` in IoHwAb.
+- Initially, `main.rs` read the button count through `get_button_count()`.
+- This direct read has now been superseded by the IoIf RX read path.
+- LED operations in `main.rs` now go through IoHwAb APIs:
+  - `set_led_state`
+  - `led_toggle`
+  - `led_set_state_group`
+- IoHwAb maps friendly types such as `LedColor`, `LedState`, `Button`, and `LedGroup` to MCAL Dio channels/groups.
+
+## Phase 10 - IoIf RX Indication Draft
+
+Started moving the button event flow above IoHwAb:
+
+- Added `src/bsw/ioif/ioif_type.rs`.
+- Added `src/bsw/ioif/ioif_cfg.rs`.
+- Added `src/bsw/ioif/ioif_rx.rs`.
+- Added `src/bsw/ioif/ioif.rs`.
+- Added RX PDU config for the user button:
+  - PDU ID: `0x100`
+  - Peripheral: `DIO`
+  - Channel: `BUTTON_USER`
+  - Mode: `INTERRUPT`
+- Added `IOIF_INDICATION_TABLE` sized from `IOIF_RX_PDU_COUNT`.
+- `button_exti_notification()` now calls `ioif_rxindication(0x100)` after updating the button count.
+- `ioif_rxindication()` marks the configured RX PDU as active.
+- `ioif_init()` clears all RX indications during startup.
+- `main.rs` calls `ioif_read_rx_value(0x100, &mut count)` and uses that value for the LED pattern.
+
+Current intended flow:
+
+```text
+PA0 rising edge
+    |
+    v
+EXTI0 interrupt
+    |
+    v
+MCAL EXTI dispatcher
+    |
+    v
+IoHwAb button_exti_notification()
+    |
+    v
+IoIf ioif_rxindication(0x100)
+    |
+    v
+IoIf indication table marks RX PDU active
+    |
+    v
+main.rs reads through ioif_read_rx_value()
+```
+
+## Phase 11 - IoIf TX Confirmation Draft
+
+Started routing LED output through IoIf TX:
+
+- Added `src/bsw/ioif/ioif_tx.rs`.
+- Added TX PDU config for LED outputs:
+  - `0x200`: `LED_RED`
+  - `0x201`: `LED_ORANGE`
+  - `0x202`: `LED_BLUE`
+  - `0x203`: `LED_YELLOW`
+- Added TX group PDU config for LED groups:
+  - `0x300`: `LED_GROUP_RED_YELLOW`
+  - `0x301`: `LED_GROUP_BLUE_ORANGE`
+- Added `IoIf_TxChannelType` and `IoIf_OutputType`.
+- Added `IoIf_TxChannelGroupType` and `IoIf_TxPduGroup`.
+- `main.rs` now uses `ioif_write_tx_state()` for normal LED on/off writes.
+- `main.rs` now uses `ioif_write_tx_group_state()` for grouped LED writes.
+- `ioif_write_tx_state()` maps TX PDU IDs to IoHwAb LED operations.
+- `ioif_write_tx_group_state()` maps TX group PDU IDs to IoHwAb LED group operations.
+- `ioif_txconfirmation()` records the write result in `IOIF_TX_CONFIRMATION_TABLE`.
+- `ioif_txconfirmation()` is shared by single TX PDU and group TX PDU paths.
+- Single TX confirmations are stored in `IOIF_TX_CONFIRMATION_TABLE`.
+- Group TX confirmations are stored in `IOIF_TX_GROUP_CONFIRMATION_TABLE`.
+
+## Phase 12 - Repository Hygiene
+
+Done:
+
+- Added root `.gitignore`.
+- Ignored `target/` build output.
+- Removed previously tracked `target/` files from Git index.
+- Build artifacts should no longer pollute `git status` after this point.
+
+## Phase 13 - Future BSW/RTE Idea
 
 Planned BSW modules:
 
@@ -260,23 +367,48 @@ Completed/mostly completed:
 - Dio MCAL
 - Basic MCU clock helper
 - EXTI register functions
-- EXTI0 callback table path
+- EXTI callback table path
+- EXTI notification APIs
+- EXTI grouped interrupt dispatch
 - Custom startup/vector table
-- LED/button interrupt demo using MCAL APIs
+- IoHwAb button/LED adapter draft
+- IoIf RX indication draft for the PA0 button event
+- IoIf TX confirmation draft for LED outputs
+- IoIf TX group PDU draft for grouped LED outputs
+- LED/button interrupt demo now uses IoIf RX/TX APIs in `main.rs`
+- `Dio_WriteChannelGroup` now applies mask/offset logic and preserves bits outside the channel group
+- `dio_write_port()` now writes full port values through `ODR`, matching channel-group write semantics
+- `main.rs` no longer reads `get_button_count()` directly
+- `ioif_read_rx_value()` now returns `IoIf_ReturnType`
+- `ioif_read_rx_value()` handles RX mode selection between `INTERRUPT` and `POLLING`
+- `ioif_rxindication()` rejects non-`INTERRUPT` RX PDUs
+- `ioif_rxindication()` validates the RX PDU index before setting the indication table
+- `ioif_txconfirmation()` validates the TX PDU index before setting the confirmation table
+- `ioif_txconfirmation()` now handles both single TX PDUs and group TX PDUs
+- LED group demo cases now route through `ioif_write_tx_group_state()`
+- Root `.gitignore` and `target/` untracking
+
+End-of-day checkpoint:
+
+```text
+The GPIO demo flow is stable enough to continue tomorrow from the IoIf/RTE boundary.
+Current main flow:
+PA0 EXTI interrupt -> IoHwAb button -> IoIf RX PDU 0x100 -> main LED pattern
+Normal LED writes -> IoIf TX PDU 0x200..0x203
+Grouped LED writes -> IoIf TX group PDU 0x300..0x301
+```
 
 Scaffolded but not yet active in the main flow:
 
 - `src/app`
 - `src/rte`
-- `src/bsw`
 - `src/config`
 - MCAL placeholders for ADC/CAN/GPT/PWM/SPI/UART/WDG
 
 Next recommended work:
 
-1. Clean up EXTI pending handling and callback safety.
-2. Add dispatchers for EXTI1..4, EXTI9_5, and EXTI15_10.
-3. Move LED/button access behind IoHwAb and RTE.
-4. Move Port/Dio/Exti config objects into `src/config`.
-5. Add `.gitignore` coverage for `target/` build output.
-6. Replace `static mut COUNT` with a safer interrupt-shared state pattern.
+1. Add shared bounds-safe helpers for `IOIF_INDICATION_TABLE` read/clear operations, not only the set path.
+2. Move Port/Dio/Exti/IoIf config objects into a clearer config structure before building a generator.
+3. Move LED pattern logic out of `main.rs` into App/RTE layer.
+4. Decide how `ioif_write_tx_state()` should report lower-layer failure separately from confirmation-table update status.
+5. Replace `static mut BUTTON_COUNT`, `IOIF_INDICATION_TABLE`, `IOIF_TX_CONFIRMATION_TABLE`, and `IOIF_TX_GROUP_CONFIRMATION_TABLE` with a safer interrupt-shared state pattern.

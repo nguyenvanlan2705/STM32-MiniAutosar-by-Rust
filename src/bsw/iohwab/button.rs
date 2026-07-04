@@ -4,25 +4,26 @@
 use crate::mcal::dio::{dio_readchannel};
 use crate::register::gpio_type::{Dio_LevelType};
 use crate::mcal::dio_type::{Dio_ChannelType};
-use crate::bsw::iohwab::iohwab_type::{Button};
+use crate::bsw::{iohwab::iohwab_type::{Button},
+                ioif::ioif_rx::ioif_rxindication};
 
 
 static mut BUTTON_COUNT : u8 = 0;
-pub fn button_callback() {
+pub fn button_exti_notification() {
     // Xử lý ngắt từ nút nhấn
     // Ví dụ: tăng biến đếm, thay đổi trạng thái LED, v.v.
     // Ở đây, chúng ta chỉ in ra thông báo để minh họa.
     unsafe {
         BUTTON_COUNT = BUTTON_COUNT + 1;
-        if BUTTON_COUNT > 8 {
+        if BUTTON_COUNT > 10 {
             BUTTON_COUNT = 0;
         }
     }
+    let _ = ioif_rxindication(0x100); // Gọi hàm ioif_rxindication với pdu_id là 0
 }
 pub fn get_button_count() -> u8 {
     unsafe { BUTTON_COUNT }
 }
-
 pub fn button_to_channel(button: Button) -> Dio_ChannelType {
     match button {
         Button::UserButton => Dio_ChannelType::UserButton,

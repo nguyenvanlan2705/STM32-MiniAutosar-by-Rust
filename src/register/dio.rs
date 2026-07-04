@@ -59,10 +59,7 @@ pub fn dio_read_output(port: PORT, pin: PIN) -> Dio_LevelType {
 pub fn dio_write_port(port: PORT, value: u32) {
     unsafe {
         let port_register = get_port_register(port);
-        //clear the output data register
-        core::ptr::write_volatile(&mut (*port_register).odr, 0);
-        //set new value
-        core::ptr::write_volatile(&mut (*port_register).bsrr, value);
+        core::ptr::write_volatile(&mut (*port_register).odr, value);
     }
 }
 pub fn dio_read_port(port: PORT) -> u32 {

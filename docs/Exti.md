@@ -24,14 +24,20 @@ Implemented and active:
 - NVIC enable for EXTI0 is implemented.
 - A global callback table exists for 16 EXTI lines.
 - `EXTI0_IRQHandler()` is installed in the custom vector table.
-- The EXTI0 callback currently increments `COUNT`, which the main loop uses to choose LED patterns.
+- `EXTI1_IRQHandler()` through `EXTI4_IRQHandler()` are installed.
+- `EXTI9_5_IRQHandler()` dispatches pending lines 5..9.
+- `EXTI15_10_IRQHandler()` dispatches pending lines 10..15.
+- EXTI pending status can be checked with `is_exti_pending`.
+- EXTI notification APIs exist:
+  - `exti_enable_notification`
+  - `exti_disable_notification`
+- The EXTI0 callback currently enters IoHwAb button logic, increments `BUTTON_COUNT`, then reports PDU `0x100` through IoIf RX indication.
 
 Not implemented yet:
 
-- Separate vector handlers for EXTI1, EXTI2, EXTI3, and EXTI4.
-- Shared dispatch for EXTI9_5 and EXTI15_10.
 - Bounds checking for callback registration.
-- A safer replacement for `static mut` interrupt-shared state.
+- A safer replacement for `static mut` interrupt-shared button state.
+- Config storage outside the driver module.
 
 ## EXTI Activation Steps
 
@@ -45,6 +51,13 @@ Example PA0 input.
 
 ```text
 RCC_APB2ENR.SYSCFGEN = 1
+```
+
+Why:
+
+```text
+SYSCFG owns the EXTI source selection registers.
+Without SYSCFG clock, PA0/PB0/PC0/... cannot be mapped to EXTI0 reliably.
 ```
 
 ### Step 3 - Map GPIO port to EXTI line
@@ -83,17 +96,52 @@ let index = (line as usize) / 4;
 let shift = ((line as usize) % 4) * 4;
 ```
 
+For PA0:
+
+```text
+line  = 0
+index = 0 / 4 = 0        -> EXTICR1
+shift = (0 % 4) * 4 = 0
+value = PORTA = 0
+
+SYSCFG_EXTICR1[3:0] = 0000
+```
+
+For PB0, the same EXTI0 line would use:
+
+```text
+SYSCFG_EXTICR1[3:0] = 0001
+```
+
+Only one port can own one EXTI line at a time.
+
 ### Step 4 - Configure trigger
 
 EXTI_RTSR for rising.
 
 EXTI_FTSR for falling.
 
+For the current PA0 button:
+
+```text
+EXTI_RTSR.TR0 = 1
+EXTI_FTSR.TR0 = 0
+```
+
+Meaning:
+
+```text
+LOW -> HIGH causes interrupt
+HIGH -> LOW does not
+```
+
 ### Step 5 - Enable line interrupt mask
 
 ```text
 EXTI_IMR |= 1 << line
 ```
+
+If the IMR bit is 0, the pending bit may exist but the interrupt is masked.
 
 ### Step 6 - Clear pending before enabling NVIC
 
@@ -109,6 +157,8 @@ Current note:
 The IRQ handler clears pending before calling the registered callback.
 Clearing pending during initialization is still a recommended cleanup step.
 ```
+
+Current `exti_enable_notification()` clears pending before enabling the line and NVIC IRQ.
 
 ### Step 7 - Enable NVIC IRQ
 
@@ -137,6 +187,46 @@ mcal::interrupcallback::exti_irq_handler(LINE0)
     +-- call callback
 ```
 
+For grouped lines:
+
+```text
+EXTI9_5_IRQHandler()
+    |
+    v
+exti_group_irq_handler([LINE5..LINE9])
+    |
+    +-- check pending bit
+    +-- dispatch pending line to exti_irq_handler(line)
+```
+
+## Code Flow for Current Button Interrupt
+
+```text
+PA0 rising edge
+    |
+    +-- EXTI_PR.PR0 becomes pending
+    +-- NVIC sees EXTI0 IRQ enabled
+    |
+    v
+EXTI0_IRQHandler()
+    |
+    v
+exti_irq_handler(LINE0)
+    |
+    +-- clear_exti_pending(LINE0)
+    +-- read EXTI_CALLBACK[0]
+    +-- call button_exti_notification()
+    |
+    v
+button_exti_notification()
+    |
+    +-- BUTTON_COUNT += 1
+    +-- ioif_rxindication(0x100)
+    |
+    v
+IoIf marks RX PDU 0x100 active
+```
+
 ## Callback Table
 
 ```rust
@@ -158,7 +248,7 @@ pub fn exti_register_callback(line: EXTILINE, cb: ExtiCallback) {
 Current code uses:
 
 ```text
-register_exti_callback(LINE0, button_callback)
+register_exti_callback(LINE0, IoHwAb button callback)
 ```
 
 The callback is registered by `exti_init()`.
@@ -200,8 +290,46 @@ exti_irq_handler(LINE0)
     +-- call EXTI_CALLBACK[0]
     |
     v
-button_callback()
+button_exti_notification()
     |
     v
-COUNT += 1
+IoHwAb BUTTON_COUNT += 1
+    |
+    v
+ioif_rxindication(0x100)
+    |
+    v
+IOIF_INDICATION_TABLE[0] = 1
 ```
+
+## Common Mistakes
+
+### 1. Forgetting SYSCFG clock
+
+The GPIO pin can be configured correctly, but EXTI source mapping still will not work if SYSCFG clock is off.
+
+### 2. Clearing pending incorrectly
+
+EXTI pending bits are cleared by writing 1, not writing 0.
+
+```text
+Correct: EXTI_PR = 1 << line
+```
+
+### 3. Calling application logic directly from vector table
+
+Keep the vector table thin:
+
+```text
+Vector Table -> MCAL IRQ handler -> registered callback
+```
+
+### 4. Doing long work in interrupt context
+
+The current callback is simple for learning. Later, debounce and heavier application logic should move to a periodic task/main loop.
+
+### 5. Sharing EXTI grouped IRQs
+
+Lines 5..9 share one IRQ and lines 10..15 share one IRQ.
+
+The grouped handler must check which pending bit is active before dispatching.
