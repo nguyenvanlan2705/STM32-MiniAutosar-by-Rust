@@ -1,54 +1,63 @@
-use crate::mcal::exti_type::Exti_Config;
-use crate::register::exti::{set_exti_trigger, enable_exti_line, get_exti_get_irq};
-use crate::register::nvic::{nvic_enable_irq};
+#![allow(dead_code)]
+
+use crate::mcal::exti_type::{Exti_Config, Exti_ConfigType};
+use crate::register::exti::{set_exti_trigger, enable_exti_line, get_exti_get_irq, disable_exti_line, clear_exti_pending};
+use crate::register::nvic::{nvic_enable_irq, nvic_disable_irq};
 use crate::register::syscfg_type::{EXTILINE};
 use crate::register::syscfg::{enable_syscfg_clock, configure_exti_line};
 use crate::register::gpio_type::{PORT};
-pub static mut COUNT : u8 = 0;
+use crate::bsw::iohwab::button::button_callback;
 
-fn button_callback() {
-    // Xử lý ngắt từ nút nhấn
-    // Ví dụ: tăng biến đếm, thay đổi trạng thái LED, v.v.
-    // Ở đây, chúng ta chỉ in ra thông báo để minh họa.
-    unsafe {
-        COUNT = COUNT + 1; 
-    }
-}
 // Định nghĩa mảng callback cho các dòng EXTI
 pub static mut EXTI_CALLBACK: [Option<fn()>; 16] = [None; 16];
 // Hàm đăng ký callback cho một dòng EXTI cụ thể
-pub fn register_exti_callback(line: usize, callback: fn()) {
+pub fn register_exti_callback(line: EXTILINE, callback: fn()) {
     unsafe {
-        EXTI_CALLBACK[line] = Some(callback);
+        EXTI_CALLBACK[line as usize] = Some(callback);
     }
 }
-// Cấu hình EXTI cho nút nhấn (ví dụ: nút nhấn kết nối với PA0)
-const EXTI_CONFIG: Exti_Config = Exti_Config {
-    port : PORT::A,
-    line: EXTILINE::LINE0,
-    trigger: crate::register::exti_type::Exti_TriggerType::RISING,
-    enabled: true,
-}; 
-// Hàm trả về cấu hình EXTI
-pub fn get_exti_config() -> &'static Exti_Config {
-    &EXTI_CONFIG
+pub fn exti_enable_notification(line: EXTILINE) {
+    clear_exti_pending(line);
+    enable_exti_line(line);
+
+    let irq = get_exti_get_irq(line);
+    nvic_enable_irq(irq);
 }
+
+pub fn exti_disable_notification(line: EXTILINE) {
+    disable_exti_line(line);
+
+    let irq = get_exti_get_irq(line);
+    nvic_disable_irq(irq);
+}
+// Cấu hình EXTI cho nút nhấn (ví dụ: nút nhấn kết nối với PA0)
+const EXTI_CONFIG: Exti_ConfigType = Exti_ConfigType {
+    exti: &[
+        Exti_Config {
+            port: PORT::A,
+            line: EXTILINE::LINE0,
+            trigger: crate::register::exti_type::Exti_TriggerType::RISING,
+            enabled: true,
+            callbackfn: Some(button_callback),
+        }
+    ]
+}; 
 // Hàm khởi tạo EXTI
 pub fn exti_init() {
-    if EXTI_CONFIG.enabled {
-        // Lấy cấu hình EXTI
-        let exti_cfg = get_exti_config();
-        // Kích hoạt clock cho SYSCFG (nếu cần)
-        enable_syscfg_clock();
-        // Cấu hình dòng EXTI
-        configure_exti_line(exti_cfg. line, exti_cfg. port);
-        // Cấu hình trigger
-        set_exti_trigger(exti_cfg. line, exti_cfg. trigger);
-        // Kích hoạt dòng EXTI
-        enable_exti_line(exti_cfg. line);
-        // Đăng ký callback và kích hoạt ngắt trong NVIC
-        let exti_line = get_exti_get_irq(exti_cfg.line);
-        register_exti_callback(exti_cfg.line as usize, button_callback);
-        nvic_enable_irq(exti_line);
+    for exti_cfg in EXTI_CONFIG.exti.iter(){
+        if exti_cfg.enabled {
+            // Kích hoạt clock cho SYSCFG (nếu cần)
+            enable_syscfg_clock();
+            // Cấu hình dòng EXTI
+            configure_exti_line(exti_cfg.line, exti_cfg.port);
+            // Cấu hình trigger
+            set_exti_trigger(exti_cfg.line, exti_cfg.trigger);
+            // Đăng ký callback và kích hoạt ngắt trong NVIC
+            if let Some(callback) = exti_cfg.callbackfn {
+                register_exti_callback(exti_cfg.line, callback);
+            }
+            // Kích hoạt thông báo ngắt
+            exti_enable_notification(exti_cfg.line);
+        }
     }
 }

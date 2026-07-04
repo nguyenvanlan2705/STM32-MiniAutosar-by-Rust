@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 #[repr(C)]
 pub struct RCCRegister{
     pub rcc_cr : u32,

@@ -1,4 +1,0 @@
-cargo:rustc-link-search=D:\STM32\Rust\MiniAutosar\STM32-MiniAutosar-by-Rust\target\thumbv7em-none-eabihf\debug\build\STM32MiniAutosarbyRust-047d1489543c6158\out
-cargo:rerun-if-changed=memory.x
-cargo:rerun-if-changed=link.x
-cargo:rustc-link-arg=-Tlink.x

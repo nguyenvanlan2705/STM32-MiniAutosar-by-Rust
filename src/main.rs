@@ -5,8 +5,9 @@ use panic_halt as _;
 mod mcal;
 mod register;
 mod startup;
+mod bsw;
+use crate::bsw::iohwab::{button::get_button_count, iohwab_type::{LedColor, LedState, LedGroup}, led::{led_set_state_group, led_toggle, set_led_state}};
 use rtt_target::{rprintln, rtt_init_print};
-use crate::mcal::exti::COUNT;
 
 #[inline(never)]
 pub fn delay(mut count1: u32) {
@@ -28,54 +29,68 @@ pub fn main() -> ! {
         //     // Simple delay loop
         //     delay(160000);
         // }
-        rprintln!("Counter: {}", unsafe{COUNT});
-        unsafe{
-            match COUNT {
+        rprintln!("Counter: {}", get_button_count());
+        match get_button_count() {
             0 => {
-                mcal::dio::dio_writechannel(mcal::std_type::Dio_ChannelType::LedYellow, register::gpio_type::Dio_LevelType::LOW);
-                mcal::dio::dio_writechannel(mcal::std_type::Dio_ChannelType::LedRed, register::gpio_type::Dio_LevelType::LOW);
-                mcal::dio::dio_writechannel(mcal::std_type::Dio_ChannelType::LedOrange, register::gpio_type::Dio_LevelType::LOW);
-                mcal::dio::dio_writechannel(mcal::std_type::Dio_ChannelType::LedBlue, register::gpio_type::Dio_LevelType::LOW);
+                set_led_state(LedColor::Yellow, LedState::Off);
+                set_led_state(LedColor::Red, LedState::Off);
+                set_led_state(LedColor::Orange, LedState::Off);
+                set_led_state(LedColor::Blue, LedState::Off);
             }
             1 => {
-                mcal::dio::dio_writechannel(mcal::std_type::Dio_ChannelType::LedYellow, register::gpio_type::Dio_LevelType::HIGH);
-                mcal::dio::dio_writechannel(mcal::std_type::Dio_ChannelType::LedRed, register::gpio_type::Dio_LevelType::LOW);
-                mcal::dio::dio_writechannel(mcal::std_type::Dio_ChannelType::LedOrange, register::gpio_type::Dio_LevelType::LOW);
-                mcal::dio::dio_writechannel(mcal::std_type::Dio_ChannelType::LedBlue, register::gpio_type::Dio_LevelType::HIGH);
+                set_led_state(LedColor::Yellow, LedState::On);
+                set_led_state(LedColor::Red, LedState::Off);
+                set_led_state(LedColor::Orange, LedState::Off);
+                set_led_state(LedColor::Blue, LedState::On);
             }
             2 => {
-                mcal::dio::dio_writechannel(mcal::std_type::Dio_ChannelType::LedYellow, register::gpio_type::Dio_LevelType::LOW);
-                mcal::dio::dio_writechannel(mcal::std_type::Dio_ChannelType::LedRed, register::gpio_type::Dio_LevelType::HIGH);
-                mcal::dio::dio_writechannel(mcal::std_type::Dio_ChannelType::LedOrange, register::gpio_type::Dio_LevelType::HIGH);
-                mcal::dio::dio_writechannel(mcal::std_type::Dio_ChannelType::LedBlue, register::gpio_type::Dio_LevelType::LOW);
+                set_led_state(LedColor::Yellow, LedState::Off);
+                set_led_state(LedColor::Red, LedState::On);
+                set_led_state(LedColor::Orange, LedState::On);
+                set_led_state(LedColor::Blue, LedState::Off);
             }
             3 => {
-                mcal::dio::dio_writechannel(mcal::std_type::Dio_ChannelType::LedYellow, register::gpio_type::Dio_LevelType::HIGH);
-                mcal::dio::dio_writechannel(mcal::std_type::Dio_ChannelType::LedRed, register::gpio_type::Dio_LevelType::HIGH);
-                mcal::dio::dio_writechannel(mcal::std_type::Dio_ChannelType::LedOrange, register::gpio_type::Dio_LevelType::LOW);
-                mcal::dio::dio_writechannel(mcal::std_type::Dio_ChannelType::LedBlue, register::gpio_type::Dio_LevelType::LOW);
+                set_led_state(LedColor::Yellow, LedState::On);
+                set_led_state(LedColor::Red, LedState::On);
+                set_led_state(LedColor::Orange, LedState::Off);
+                set_led_state(LedColor::Blue, LedState::Off);
             }
             4 => {
-                mcal::dio::dio_writechannel(mcal::std_type::Dio_ChannelType::LedYellow, register::gpio_type::Dio_LevelType::LOW);
-                mcal::dio::dio_writechannel(mcal::std_type::Dio_ChannelType::LedRed, register::gpio_type::Dio_LevelType::LOW);
-                mcal::dio::dio_writechannel(mcal::std_type::Dio_ChannelType::LedOrange, register::gpio_type::Dio_LevelType::HIGH);
-                mcal::dio::dio_writechannel(mcal::std_type::Dio_ChannelType::LedBlue, register::gpio_type::Dio_LevelType::HIGH);
+                set_led_state(LedColor::Yellow, LedState::Off);
+                set_led_state(LedColor::Red, LedState::Off);
+                set_led_state(LedColor::Orange, LedState::On);
+                set_led_state(LedColor::Blue, LedState::On);
             }
             5 => {
-                mcal::dio::dio_writechannel(mcal::std_type::Dio_ChannelType::LedYellow, register::gpio_type::Dio_LevelType::HIGH);
-                mcal::dio::dio_writechannel(mcal::std_type::Dio_ChannelType::LedRed, register::gpio_type::Dio_LevelType::HIGH);
-                mcal::dio::dio_writechannel(mcal::std_type::Dio_ChannelType::LedOrange, register::gpio_type::Dio_LevelType::HIGH);
-                mcal::dio::dio_writechannel(mcal::std_type::Dio_ChannelType::LedBlue, register::gpio_type::Dio_LevelType::HIGH);
+                set_led_state(LedColor::Yellow, LedState::On);
+                set_led_state(LedColor::Red, LedState::On);
+                set_led_state(LedColor::Orange, LedState::On);
+                set_led_state(LedColor::Blue, LedState::On);
+            }
+            6 => {
+                set_led_state(LedColor::Yellow, LedState::Off);
+                set_led_state(LedColor::Red, LedState::Off);
+                set_led_state(LedColor::Orange, LedState::Off);
+                set_led_state(LedColor::Blue, LedState::Off);
+            }
+            7 => {
+                let redyellow = LedGroup::RedYellow;
+                let value1 = 0b1010; // Example value, adjust as needed
+                led_set_state_group(redyellow, value1);
+            }
+            8 => {
+                let blueorange = LedGroup::BlueOrange;
+                let value2 = 0b0101; // Example value, adjust as needed
+                led_set_state_group(blueorange, value2);
             }
             _ => {
-                let _ = mcal::dio::dio_flipchannel(mcal::std_type::Dio_ChannelType::LedYellow);
-                let _ = mcal::dio::dio_flipchannel(mcal::std_type::Dio_ChannelType::LedRed);
-                let _ = mcal::dio::dio_flipchannel(mcal::std_type::Dio_ChannelType::LedOrange);
-                let _ = mcal::dio::dio_flipchannel(mcal::std_type::Dio_ChannelType::LedBlue);
+                let _ = led_toggle(LedColor::Yellow);
+                let _ = led_toggle(LedColor::Red);
+                let _ = led_toggle(LedColor::Orange);
+                let _ = led_toggle(LedColor::Blue);
                 // Simple delay loop
-                delay(1600000);
+                delay(200000);
             }
-        } 
         }
     }
 }

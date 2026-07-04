@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Syscfg_Register {

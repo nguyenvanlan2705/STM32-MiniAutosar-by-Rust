@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::register::nvic_type::{get_nvic_register, IRQn};
 
 pub fn nvic_enable_irq(irqn: IRQn) {

@@ -10,7 +10,8 @@
 
 #![allow(non_snake_case)]
 use crate::register::syscfg_type::EXTILINE;
-use crate::mcal::interrupcallback::exti_irq_handler;
+use crate::mcal::interrupcallback::{exti_irq_handler, exti_group_irq_handler};
+
 /// Một phần tử trong bảng vector: hoặc là con trỏ hàm handler,
 /// hoặc là ô "reserved" (giá trị 0).
 #[repr(C)]
@@ -142,6 +143,44 @@ pub extern "C" fn DefaultHandler() {
 pub extern "C" fn EXTI0_IRQHandler() {
     exti_irq_handler(EXTILINE::LINE0);
 }
+#[unsafe(no_mangle)]
+pub extern "C" fn EXTI1_IRQHandler() {
+    exti_irq_handler(EXTILINE::LINE1);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn EXTI2_IRQHandler() {
+    exti_irq_handler(EXTILINE::LINE2);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn EXTI3_IRQHandler() {
+    exti_irq_handler(EXTILINE::LINE3);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn EXTI4_IRQHandler() {
+    exti_irq_handler(EXTILINE::LINE4);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn EXTI9_5_IRQHandler() {
+    exti_group_irq_handler(&[
+        EXTILINE::LINE5,
+        EXTILINE::LINE6,
+        EXTILINE::LINE7,
+        EXTILINE::LINE8,
+        EXTILINE::LINE9,
+    ]);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn EXTI15_10_IRQHandler() {
+    exti_group_irq_handler(&[
+        EXTILINE::LINE10,
+        EXTILINE::LINE11,
+        EXTILINE::LINE12,
+        EXTILINE::LINE13,
+        EXTILINE::LINE14,
+        EXTILINE::LINE15,
+    ]);
+}
+
 // ---------------------------------------------------------------------------
 // Bảng vector đặt tại đầu FLASH.
 // Word đầu tiên (initial stack pointer) do linker script tự phát ra.
@@ -183,10 +222,10 @@ pub static __INTERRUPTS: [Vector; 86] = [
     Vector { handler: DefaultHandler },          // 4  FLASH
     Vector { handler: DefaultHandler },          // 5  RCC
     Vector { handler: EXTI0_IRQHandler },        // 6  EXTI0
-    Vector { handler: DefaultHandler },          // 7  EXTI1
-    Vector { handler: DefaultHandler },          // 8  EXTI2
-    Vector { handler: DefaultHandler },          // 9  EXTI3
-    Vector { handler: DefaultHandler },          // 10 EXTI4
+    Vector { handler: EXTI1_IRQHandler },          // 7  EXTI1
+    Vector { handler: EXTI2_IRQHandler },          // 8  EXTI2
+    Vector { handler: EXTI3_IRQHandler },          // 9  EXTI3
+    Vector { handler: EXTI4_IRQHandler },          // 10 EXTI4
     Vector { handler: DefaultHandler },          // 11 DMA1_Stream0
     Vector { handler: DefaultHandler },          // 12 DMA1_Stream1
     Vector { handler: DefaultHandler },          // 13 DMA1_Stream2
@@ -199,7 +238,7 @@ pub static __INTERRUPTS: [Vector; 86] = [
     Vector { reserved: 0 },                      // 20 Reserved
     Vector { reserved: 0 },                      // 21 Reserved
     Vector { reserved: 0 },                      // 22 Reserved
-    Vector { handler: DefaultHandler },          // 23 EXTI9_5
+    Vector { handler: EXTI9_5_IRQHandler },      // 23 EXTI9_5
     Vector { handler: DefaultHandler },          // 24 TIM1_BRK_TIM9
     Vector { handler: DefaultHandler },          // 25 TIM1_UP_TIM10
     Vector { handler: DefaultHandler },          // 26 TIM1_TRG_COM_TIM11
@@ -216,7 +255,7 @@ pub static __INTERRUPTS: [Vector; 86] = [
     Vector { handler: DefaultHandler },          // 37 USART1
     Vector { handler: DefaultHandler },          // 38 USART2
     Vector { reserved: 0 },                      // 39 Reserved
-    Vector { handler: DefaultHandler },          // 40 EXTI15_10
+    Vector { handler: EXTI15_10_IRQHandler },    // 40 EXTI15_10
     Vector { handler: DefaultHandler },          // 41 RTC_Alarm
     Vector { handler: DefaultHandler },          // 42 OTG_FS_WKUP
     Vector { reserved: 0 },                      // 43 Reserved

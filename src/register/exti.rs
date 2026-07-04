@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::register::exti_type::{Exti_TriggerType};
 use crate::register::exti_type::get_exti_register;
 use crate::register::syscfg_type::{EXTILINE};
@@ -118,5 +120,13 @@ pub fn get_exti_get_irq(line: EXTILINE) -> IRQn {
         EXTILINE::LINE13 => IRQn::EXTI15_10,
         EXTILINE::LINE14 => IRQn::EXTI15_10,
         EXTILINE::LINE15 => IRQn::EXTI15_10,
+    }
+}
+
+pub fn is_exti_pending(exti_line: EXTILINE) -> bool {
+    unsafe {
+        let exti = get_exti_register();
+        let pending_value = core::ptr::read_volatile(&(*exti).pr);
+        (pending_value & (1 << (exti_line as u32))) != 0
     }
 }
