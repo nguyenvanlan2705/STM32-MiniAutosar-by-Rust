@@ -11,6 +11,8 @@ The current demo configures:
 - EXTI group handlers for EXTI9_5 and EXTI15_10 are available.
 - Button notification is handled in IoHwAb and reported upward through IoIf RX indication.
 - Normal LED writes are routed through IoIf TX and confirmed through IoIf TxConfirmation.
+- Shared IoIf status tables use `AtomicU8`.
+- The EXTI callback table uses `AtomicUsize` because callback addresses are pointer-sized.
 
 The main loop reads the interrupt-updated button count through IoIf RX and writes normal LED states through IoIf TX.
 
@@ -275,6 +277,9 @@ For GPIO output such as an LED:
 3. Application/main calls
    ioif_write_tx_state(0x200, IoIf_OutputType::STD_ON)
 
+   For toggle:
+   ioif_write_tx_state(0x200, IoIf_OutputType::TOGGLE)
+
 4. IoIf maps PDU to IoHwAb LED
 
 5. IoHwAb maps LED to MCAL Dio channel
@@ -299,12 +304,12 @@ For grouped GPIO output such as LED pairs:
 
 ```text
 1. Define TX group channel type
-   IoIf_TxChannelGroupType::LED_GROUP_RED_YELLOW
+   IoIf_TxChannelGroupType::LED_GROUP_RED_BLUE
 
 2. Define TX group PDU config
    id            = 0x300
    peripheral    = DIO
-   channel_group = LED_GROUP_RED_YELLOW
+   channel_group = LED_GROUP_RED_BLUE
 
 3. Application/main calls
    ioif_write_tx_group_state(0x300, value)
@@ -322,8 +327,8 @@ Current LED group PDU IDs:
 
 | PDU ID | LED group |
 |---:|---|
-| `0x300` | Red + Yellow |
-| `0x301` | Blue + Orange |
+| `0x300` | Red + Blue |
+| `0x301` | Orange + Yellow |
 
 ## 11. Things to Check When GPIO Does Not Work
 
@@ -343,4 +348,6 @@ Current LED group PDU IDs:
 13. Is the callback registered in EXTI config?
 14. Is IoIf PDU ID matching the single or group config?
 15. For group writes, do the Dio mask and offset describe the intended bit field?
+16. For interrupt-shared globals, is the datatype atomic or otherwise protected?
+17. For callback/global pointer storage, are you using a pointer-sized type such as `usize`/`AtomicUsize`?
 ```

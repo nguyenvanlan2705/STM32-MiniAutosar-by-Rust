@@ -1,57 +1,16 @@
 #![allow(dead_code)]
 
-use crate::mcal::dio_type::{Dio_ChannelType, Dio_ConfigType, Dio_ChannelConfig, Dio_GroupConfigType, Dio_ChannelGroupType};
-use crate::register::gpio_type::{PORT, PIN, Dio_LevelType};
+use crate::mcal::cfg::dio_cfg::{DIO_CHANNEL_CONFIG, DIO_CHANNELGROUP_CFG};
+use crate::mcal::dio_type::{Dio_ChannelGroupType, Dio_ChannelType, Dio_GroupConfigType};
+use crate::register::gpio_type::Dio_LevelType;
 use crate::register::dio::{dio_read, dio_toggle, dio_write, dio_write_port, dio_read_output, dio_read_output_port};
-const DIO_CHANNEL_CONFIG : Dio_ConfigType = Dio_ConfigType{
-    channels: &[
-        Dio_ChannelConfig{
-            channel : Dio_ChannelType::LedYellow,
-            port : PORT::D,
-            pin : PIN::P12,
-        },
-        Dio_ChannelConfig{
-            channel : Dio_ChannelType::LedOrange,
-            port : PORT::D,
-            pin : PIN::P13,
-        },
-        Dio_ChannelConfig{
-            channel : Dio_ChannelType::LedRed,
-            port : PORT::D,
-            pin : PIN::P14,
-        },
-        Dio_ChannelConfig{
-            channel : Dio_ChannelType::LedBlue,
-            port : PORT::D,
-            pin : PIN::P15,
-        },
-        Dio_ChannelConfig{
-            channel : Dio_ChannelType::UserButton,
-            port : PORT::A,
-            pin : PIN::P0,
-        },
-    ],
-};
-const DIO_CHANNELGROUP_CFG : Dio_GroupConfigType = Dio_GroupConfigType{
-    groups: &[
-        Dio_ChannelGroupType{
-            port : PORT::D,
-            mask : 0b1100_0000_0000_0000,
-            offset : 12,
-        },
-        Dio_ChannelGroupType{
-            port : PORT::D,
-            mask : 0b0011_0000_0000_0000,
-            offset : 12,
-        },
-    ],
-};
+
 pub fn get_channelgroup_cfg() -> &'static Dio_GroupConfigType {
     &DIO_CHANNELGROUP_CFG
 }
 fn get_channel_cfg_index(channel: Dio_ChannelType) -> usize {
     for (index, channel_cfg) in DIO_CHANNEL_CONFIG.channels.iter().enumerate() {
-        if channel_cfg.channel == channel { 
+        if channel_cfg.channel == channel {
             return index;
         }
     }

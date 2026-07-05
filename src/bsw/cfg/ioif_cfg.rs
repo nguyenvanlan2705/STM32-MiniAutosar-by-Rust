@@ -44,13 +44,13 @@ const IOIF_TX_PDU_GROUP_CONFIG: &[IoIf_TxPduGroup] = &[
         index: 0,
         id: 0x300,
         peripheral: IoIf_PeripheralType::DIO,
-        channel_group: IoIf_TxChannelGroupType::LED_GROUP_RED_YELLOW,
+        channel_group: IoIf_TxChannelGroupType::LED_GROUP_RED_BLUE,
     },
     IoIf_TxPduGroup {
         index: 1,
         id: 0x301,
         peripheral: IoIf_PeripheralType::DIO,
-        channel_group: IoIf_TxChannelGroupType::LED_GROUP_BLUE_ORANGE,
+        channel_group: IoIf_TxChannelGroupType::LED_GROUP_ORANGE_YELLOW,
     },
 ];
 pub const IOIF_RX_PDU_COUNT: usize = IOIF_RX_PDU_CONFIG.len();

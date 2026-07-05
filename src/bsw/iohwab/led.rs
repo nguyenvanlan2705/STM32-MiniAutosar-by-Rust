@@ -18,14 +18,15 @@ fn led_color_to_channel(color: LedColor) -> Dio_ChannelType {
 fn led_group_to_channel_group(group: LedGroup) -> Dio_ChannelGroupType {
     let channel_groups = get_channelgroup_cfg().groups;
     match group {
-        LedGroup::RedYellow => channel_groups[0],
-        LedGroup::BlueOrange => channel_groups[1],
+        LedGroup::RedBlue => channel_groups[0],
+        LedGroup::OrangeYellow => channel_groups[1],
     }
 }
 pub fn led_state_to_level(state: LedState) -> Dio_LevelType {
     match state {
         LedState::On => Dio_LevelType::HIGH,
         LedState::Off => Dio_LevelType::LOW,
+        LedState::Toggle => Dio_LevelType::LOW, // Mặc định là LOW nếu không xác định
     }
 }
 pub fn led_toggle(color: LedColor){

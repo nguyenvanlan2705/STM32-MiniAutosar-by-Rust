@@ -71,8 +71,9 @@ More detailed reset sequence:
 Why `.bss` matters:
 
 ```text
-static mut BUTTON_COUNT: u8 = 0;
-static mut IOIF_INDICATION_TABLE: [...] = [0; ...];
+static BUTTON_COUNT: AtomicU8 = AtomicU8::new(0);
+static IOIF_INDICATION_TABLE: [AtomicU8; ...] = [...];
+static EXTI_CALLBACK: [AtomicUsize; 16] = [...];
 ```
 
 These depend on startup zeroing/copying memory correctly.
@@ -209,3 +210,15 @@ Startup should initialize memory and dispatch interrupts. It should not know LED
 If `.bss` is not cleared, zero-initialized globals may start with garbage.
 
 If `.data` is not copied, initialized globals may have wrong values.
+
+### 5. Choosing the wrong global datatype
+
+For interrupt-shared state, prefer atomics for simple values:
+
+```text
+AtomicU8    small counters/status flags
+AtomicU32   shared bit masks or 32-bit values
+AtomicUsize pointer-sized callback storage
+```
+
+See `docs/GlobalData.md` for the current project guideline.

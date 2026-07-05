@@ -32,12 +32,13 @@ Implemented and active:
   - `exti_enable_notification`
   - `exti_disable_notification`
 - The EXTI0 callback currently enters IoHwAb button logic, increments `BUTTON_COUNT`, then reports PDU `0x100` through IoIf RX indication.
+- The EXTI callback table currently uses `[AtomicUsize; 16]` instead of `static mut`.
+- EXTI config lives in `src/mcal/cfg/exti_cfg.rs`.
 
 Not implemented yet:
 
 - Bounds checking for callback registration.
-- A safer replacement for `static mut` interrupt-shared button state.
-- Config storage outside the driver module.
+- Debounce handling for the PA0 button interrupt.
 
 ## EXTI Activation Steps
 
@@ -232,16 +233,15 @@ IoIf marks RX PDU 0x100 active
 ```rust
 type ExtiCallback = fn();
 
-static mut EXTI_CALLBACKS: [Option<ExtiCallback>; 16] = [None; 16];
+static EXTI_CALLBACK: [AtomicUsize; 16] =
+    [const { AtomicUsize::new(0) }; 16];
 ```
 
 Register callback:
 
 ```rust
-pub fn exti_register_callback(line: EXTILINE, cb: ExtiCallback) {
-    unsafe {
-        EXTI_CALLBACKS[line as usize] = Some(cb);
-    }
+pub fn register_exti_callback(line: EXTILINE, callback: fn()) {
+    EXTI_CALLBACK[line as usize].store(callback as usize, Ordering::Release);
 }
 ```
 
@@ -252,6 +252,33 @@ register_exti_callback(LINE0, IoHwAb button callback)
 ```
 
 The callback is registered by `exti_init()`.
+
+Read callback:
+
+```rust
+pub fn register_get_exti_callback(line: EXTILINE) -> Option<fn()> {
+    let callback = EXTI_CALLBACK[line as usize].load(Ordering::Acquire);
+    if callback == 0 {
+        None
+    } else {
+        Some(unsafe { core::mem::transmute(callback) })
+    }
+}
+```
+
+Why `AtomicUsize`:
+
+```text
+A function pointer is pointer-sized.
+usize is the Rust integer type intended to hold pointer-sized values.
+AtomicUsize lets interrupt code read the callback address without static mut.
+```
+
+Remaining improvement:
+
+```text
+Add line/index bounds checks before indexing EXTI_CALLBACK.
+```
 
 ## Important Design Rule
 

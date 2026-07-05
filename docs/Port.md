@@ -27,7 +27,9 @@ The current Port configuration initializes:
 | PD15 | Blue LED | Output | None |
 | PA0 | User button | Input | Pulldown |
 
-The configuration currently lives inside `src/mcal/port.rs`. A future cleanup should move it to `src/config/port_cfg.rs`.
+The configuration currently lives in `src/mcal/cfg/port_cfg.rs`.
+
+Port configuration is read-only runtime data. Keep it as `const` configuration, not mutable global state. For broader global/static datatype rules, see `docs/GlobalData.md`.
 
 ## AUTOSAR-like Rule
 

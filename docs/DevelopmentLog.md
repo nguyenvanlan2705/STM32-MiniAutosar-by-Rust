@@ -149,6 +149,7 @@ Implemented the first EXTI driver path:
 - Config-based callback registration through `callbackfn`
 - Pending check helper for grouped interrupt dispatch
 - EXTI0 button callback is now routed to IoHwAb button logic
+- EXTI callback table now stores callback addresses with `AtomicUsize`
 
 Important rule:
 
@@ -264,7 +265,7 @@ Started moving demo behavior above MCAL:
 Started moving the button event flow above IoHwAb:
 
 - Added `src/bsw/ioif/ioif_type.rs`.
-- Added `src/bsw/ioif/ioif_cfg.rs`.
+- Added IoIf config. It now lives under `src/bsw/cfg/ioif_cfg.rs`.
 - Added `src/bsw/ioif/ioif_rx.rs`.
 - Added `src/bsw/ioif/ioif.rs`.
 - Added RX PDU config for the user button:
@@ -313,18 +314,21 @@ Started routing LED output through IoIf TX:
   - `0x202`: `LED_BLUE`
   - `0x203`: `LED_YELLOW`
 - Added TX group PDU config for LED groups:
-  - `0x300`: `LED_GROUP_RED_YELLOW`
-  - `0x301`: `LED_GROUP_BLUE_ORANGE`
+  - `0x300`: `LED_GROUP_RED_BLUE`
+  - `0x301`: `LED_GROUP_ORANGE_YELLOW`
 - Added `IoIf_TxChannelType` and `IoIf_OutputType`.
 - Added `IoIf_TxChannelGroupType` and `IoIf_TxPduGroup`.
 - `main.rs` now uses `ioif_write_tx_state()` for normal LED on/off writes.
 - `main.rs` now uses `ioif_write_tx_group_state()` for grouped LED writes.
+- `IoIf_OutputType::TOGGLE` is supported for single LED TX PDUs.
 - `ioif_write_tx_state()` maps TX PDU IDs to IoHwAb LED operations.
 - `ioif_write_tx_group_state()` maps TX group PDU IDs to IoHwAb LED group operations.
 - `ioif_txconfirmation()` records the write result in `IOIF_TX_CONFIRMATION_TABLE`.
 - `ioif_txconfirmation()` is shared by single TX PDU and group TX PDU paths.
 - Single TX confirmations are stored in `IOIF_TX_CONFIRMATION_TABLE`.
 - Group TX confirmations are stored in `IOIF_TX_GROUP_CONFIRMATION_TABLE`.
+- `BUTTON_COUNT`, `IOIF_INDICATION_TABLE`, `IOIF_TX_CONFIRMATION_TABLE`, and `IOIF_TX_GROUP_CONFIRMATION_TABLE` now use `AtomicU8`.
+- TX confirmation records command result only. It does not represent the current physical LED ON/OFF state after a toggle.
 
 ## Phase 12 - Repository Hygiene
 
@@ -386,6 +390,13 @@ Completed/mostly completed:
 - `ioif_txconfirmation()` validates the TX PDU index before setting the confirmation table
 - `ioif_txconfirmation()` now handles both single TX PDUs and group TX PDUs
 - LED group demo cases now route through `ioif_write_tx_group_state()`
+- Single LED TX now supports `IoIf_OutputType::TOGGLE`
+- IoHwAb button count and IoIf RX/TX state tables now use `AtomicU8`
+- Register layer files are now grouped under `src/register/type`, `src/register/src`, and `src/register/cfg` while keeping the old public module paths through `src/register/mod.rs`.
+- MCAL Port/Dio/Exti configuration objects now live under `src/mcal/cfg`.
+- MCAL type files now live under `src/mcal/type` and MCAL driver implementation files now live under `src/mcal/src` while keeping old public module paths through `src/mcal/mod.rs`.
+- EXTI callback table no longer uses `static mut`; it uses `AtomicUsize` and a getter API.
+- Added global/static datatype notes in `docs/GlobalData.md`.
 - Root `.gitignore` and `target/` untracking
 
 End-of-day checkpoint:
@@ -402,13 +413,13 @@ Scaffolded but not yet active in the main flow:
 
 - `src/app`
 - `src/rte`
-- `src/config`
 - MCAL placeholders for ADC/CAN/GPT/PWM/SPI/UART/WDG
 
 Next recommended work:
 
-1. Add shared bounds-safe helpers for `IOIF_INDICATION_TABLE` read/clear operations, not only the set path.
-2. Move Port/Dio/Exti/IoIf config objects into a clearer config structure before building a generator.
-3. Move LED pattern logic out of `main.rs` into App/RTE layer.
-4. Decide how `ioif_write_tx_state()` should report lower-layer failure separately from confirmation-table update status.
-5. Replace `static mut BUTTON_COUNT`, `IOIF_INDICATION_TABLE`, `IOIF_TX_CONFIRMATION_TABLE`, and `IOIF_TX_GROUP_CONFIRMATION_TABLE` with a safer interrupt-shared state pattern.
+1. Normalize config naming/layout across MCAL and BSW before building a generator.
+2. Move LED pattern logic out of `main.rs` into App/RTE layer.
+3. Decide how `ioif_write_tx_state()` should report lower-layer failure separately from confirmation-table update status.
+4. Add an output-state table if IoIf needs to report current ON/OFF state separately from TX confirmation result.
+5. Remove unnecessary `unsafe` blocks around atomic IoIf RX helpers.
+6. Add bounds checks to EXTI callback register/get helpers before indexing line tables.

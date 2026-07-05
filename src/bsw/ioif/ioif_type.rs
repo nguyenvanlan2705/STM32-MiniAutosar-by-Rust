@@ -19,8 +19,8 @@ pub enum IoIf_TxChannelType {
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)] 
 pub enum IoIf_TxChannelGroupType{
-    LED_GROUP_RED_YELLOW,
-    LED_GROUP_BLUE_ORANGE,
+    LED_GROUP_RED_BLUE,
+    LED_GROUP_ORANGE_YELLOW,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)] 
 pub enum IoIf_RxChannelType {
@@ -74,5 +74,13 @@ pub struct IoIf_ConfigTXGroupType{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)] 
 pub enum IoIf_OutputType {
     STD_ON,
-    STD_OFF
+    STD_OFF,
+    TOGGLE
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IoIf_ConfirmationStatus{
+    IDLE,
+    PENDING,
+    CONFIRMED_OK,
+    CONFIRMED_NOT_OK,
 }

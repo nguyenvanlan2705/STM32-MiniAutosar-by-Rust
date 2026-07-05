@@ -1,13 +1,12 @@
 use crate::register::exti::{clear_exti_pending, is_exti_pending};
-use crate::mcal::exti::{EXTI_CALLBACK};
+use crate::mcal::exti::{register_get_exti_callback};
 use crate::register::syscfg_type::{EXTILINE};
 /// Hàm xử lý ngắt EXTI, được gọi từ vector table.
 pub fn exti_irq_handler(line: EXTILINE) {
     clear_exti_pending(line);
-    unsafe {
-        if let Some(cb) = EXTI_CALLBACK[line as usize] {
-            cb();
-        }
+    let cbkfn = register_get_exti_callback(line);
+    if let Some(cb) = cbkfn {
+        cb();
     }
 }
 /// Hàm xử lý ngắt EXTI cho nhiều dòng, được gọi từ vector table.

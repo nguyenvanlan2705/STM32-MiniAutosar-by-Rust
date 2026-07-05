@@ -51,6 +51,18 @@ Startup / Vector Table
 STM32F411 Hardware
 ```
 
+Current source layout keeps stable public module names while grouping files physically:
+
+```text
+src/register/type    register data types
+src/register/src     register access functions
+src/register/cfg     register constants/common addresses
+
+src/mcal/type        MCAL public data types
+src/mcal/src         MCAL driver implementation
+src/mcal/cfg         MCAL configuration objects
+```
+
 ## Current Active Runtime Flow
 
 The code path currently compiled and exercised by `main.rs` is:
@@ -154,6 +166,7 @@ Current demo routes normal LED writes through IoIf TX:
 ```rust
 ioif_write_tx_state(0x200, IoIf_OutputType::STD_ON);
 ioif_write_tx_state(0x203, IoIf_OutputType::STD_OFF);
+ioif_write_tx_state(0x200, IoIf_OutputType::TOGGLE);
 ```
 
 Current demo also routes grouped LED writes through IoIf TX group PDUs:
@@ -170,6 +183,16 @@ main.rs -> IoIf read API -> IoHwAb button state
 ```
 
 IoIf TX currently has separate config structs for single-channel TX PDUs and group TX PDUs. Both use the same `ioif_txconfirmation()` entry point.
+
+TX confirmation currently records the command result (`IOIF_E_OK` or `IOIF_E_NOT_OK`). It is not an output-state table. If IoIf needs to report whether a LED is currently ON or OFF after a toggle, that should be tracked separately.
+
+Shared state guideline:
+
+```text
+Small interrupt-shared flags/counters use atomics.
+Read-only configuration uses const tables.
+Pointer-sized callback storage uses AtomicUsize.
+```
 
 ### 2. Register layer only maps hardware
 

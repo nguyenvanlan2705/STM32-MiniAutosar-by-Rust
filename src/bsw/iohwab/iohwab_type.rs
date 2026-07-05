@@ -13,7 +13,8 @@ pub enum LedColor {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LedState {
     On,
-    Off
+    Off,
+    Toggle
 }
 
 /* Button */
@@ -24,6 +25,6 @@ pub enum Button {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LedGroup {
-    RedYellow, // Ví dụ: Nhóm LED 1
-    BlueOrange, // Ví dụ: Nhóm LED 2
+    RedBlue    , // Ví dụ: Nhóm LED 1
+    OrangeYellow, // Ví dụ: Nhóm LED 2
 }

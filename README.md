@@ -9,14 +9,19 @@ The active demo currently covers:
 - Custom `no_std` / `no_main` startup and vector table.
 - Register-level RCC, GPIO, SYSCFG, EXTI, and NVIC access.
 - MCAL-style `Mcu`, `Port`, `Dio`, and `Exti` modules.
+- Register files are grouped into `src/register/type`, `src/register/src`, and `src/register/cfg`.
+- MCAL files are grouped into `src/mcal/type`, `src/mcal/src`, and `src/mcal/cfg`.
 - PA0 user button mapped to EXTI0.
 - EXTI0 interrupt dispatched through the custom vector table into the MCAL callback path.
 - EXTI1..4 and grouped EXTI9_5 / EXTI15_10 interrupt dispatch scaffolding.
 - IoHwAb button notification state.
 - IoHwAb LED APIs for PD12..PD15.
 - IoIf RX indication draft for the PA0 button event.
-- IoIf TX write/confirmation draft for LED output PD12..PD15.
+- IoIf TX write/toggle/confirmation draft for LED output PD12..PD15.
 - IoIf TX group PDU draft for grouped LED writes.
+- Interrupt/shared state currently uses atomics where practical:
+  - `AtomicU8` for small status/count tables.
+  - `AtomicUsize` for stored callback addresses in the EXTI callback table.
 - `main.rs` now reads the button-driven value through IoIf RX and writes LED single/group states through IoIf TX.
 - `target/` build output ignored through `.gitignore`.
 
@@ -38,6 +43,7 @@ PA0 EXTI0 interrupt
 -> IoIf indication table marks the RX PDU active
 -> main.rs reads the value through ioif_read_rx_value()
 -> main.rs writes LED output through ioif_write_tx_state()
+-> main.rs toggles LED output through IoIf_OutputType::TOGGLE
 -> main.rs writes grouped LED output through ioif_write_tx_group_state()
 -> IoIf TxConfirmation records the result
 ```
@@ -51,3 +57,4 @@ PA0 EXTI0 interrupt
 - `docs/Dio.md`: Dio MCAL status.
 - `docs/Exti.md`: EXTI MCAL status and current PA0 -> EXTI0 flow.
 - `docs/ActivationSteps.md`: GPIO, DIO, EXTI, NVIC, RTT, and delay checklist.
+- `docs/GlobalData.md`: notes for choosing data types for global/static variables.

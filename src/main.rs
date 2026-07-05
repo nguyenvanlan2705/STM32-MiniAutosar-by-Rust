@@ -6,14 +6,13 @@ mod mcal;
 mod register;
 mod startup;
 mod bsw;
-use crate::bsw::{iohwab::{
-    iohwab_type::{LedColor},
-    led::{led_toggle},
-},
+use crate::bsw::{
     ioif::ioif_rx::ioif_read_rx_value,
     ioif::ioif::ioif_init,
     ioif::ioif_tx::{ioif_write_tx_state, ioif_write_tx_group_state},
-    ioif::ioif_type::IoIf_OutputType,};
+    ioif::ioif_type::IoIf_OutputType,
+};
+
 use rtt_target::{rprintln, rtt_init_print};
 
 #[inline(never)]
@@ -31,7 +30,6 @@ pub fn main() -> ! {
     mcal::port::port_init();
     mcal::exti::exti_init();
     ioif_init();
-
     let mut count :u8 =0;
     loop {
         // let button_state = mcal::dio::dio_readchannel(mcal::std_type::Dio_ChannelType::UserButton);
@@ -90,14 +88,14 @@ pub fn main() -> ! {
                 ioif_write_tx_group_state(0x300, redyellow);
             }
             8 => {
-                let blueorange = 0b0011; // Example value, adjust as needed
-                ioif_write_tx_group_state(0x301, blueorange);
+                let orangeyellow = 0b0011; // Example value, adjust as needed
+                ioif_write_tx_group_state(0x301, orangeyellow);
             }
-            _ => {
-                let _ = led_toggle(LedColor::Yellow);
-                let _ = led_toggle(LedColor::Red);
-                let _ = led_toggle(LedColor::Orange);
-                let _ = led_toggle(LedColor::Blue);
+             _ => {
+                ioif_write_tx_state(0x203, IoIf_OutputType::TOGGLE);
+                ioif_write_tx_state(0x200, IoIf_OutputType::TOGGLE);
+                ioif_write_tx_state(0x202, IoIf_OutputType::TOGGLE);
+                ioif_write_tx_state(0x201, IoIf_OutputType::TOGGLE);
                 // Simple delay loop
                 delay(200000);
             }

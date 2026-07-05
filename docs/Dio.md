@@ -27,16 +27,16 @@ Configured logical channels:
 | `LedBlue` | PD15 |
 | `UserButton` | PA0 |
 
-The channel configuration currently lives inside `src/mcal/dio.rs`; a future cleanup should move it to `src/config/dio_cfg.rs`.
+The channel configuration currently lives in `src/mcal/cfg/dio_cfg.rs`.
 
-Channel group configuration is also present in `src/mcal/dio.rs`.
+Channel group configuration is also present in `src/mcal/cfg/dio_cfg.rs`.
 
 Current groups:
 
 | Logical group in IoHwAb | Port | Mask | Offset |
 |---|---|---:|---:|
-| `LedGroup::RedYellow` | D | `0b1100_0000_0000_0000` | 12 |
-| `LedGroup::BlueOrange` | D | `0b0011_0000_0000_0000` | 12 |
+| `LedGroup::RedBlue` | D | `0b1100_0000_0000_0000` | 12 |
+| `LedGroup::OrangeYellow` | D | `0b0011_0000_0000_0000` | 12 |
 
 Current note:
 
@@ -50,8 +50,8 @@ Current channel group write flow:
 ```text
 ioif_write_tx_group_state(0x300, value)
     |
-    +-- IoIf group PDU 0x300 -> LED_GROUP_RED_YELLOW
-    +-- IoHwAb LedGroup::RedYellow -> Dio_ChannelGroupType
+    +-- IoIf group PDU 0x300 -> LED_GROUP_RED_BLUE
+    +-- IoHwAb LedGroup::RedBlue -> Dio_ChannelGroupType
     |
     v
 dio_writechannelgroup(group, value)
@@ -246,7 +246,7 @@ Dio_ChannelGroupType {
 
 The current code experiments with smaller LED groups.
 
-Example with current `LedGroup::RedYellow`:
+Example with current `LedGroup::RedBlue`:
 
 ```text
 mask   = 0b1100_0000_0000_0000
@@ -273,6 +273,13 @@ Important note:
 ```text
 mask and offset must describe the same bit field.
 If the mask starts at PD14 but offset is 12, low value bits may not land where you expect.
+```
+
+For future generator work, the group config should make this relationship obvious. A generated config should either:
+
+```text
+1. create masks and offsets from selected pins automatically, or
+2. validate that mask + offset + group width are consistent.
 ```
 
 ## BSRR, ODR, and IDR
