@@ -1,4 +1,5 @@
 pub mod cfg;
+
 #[path = "src/port.rs"]
 pub mod port;
 #[path = "src/mcu.rs"]
@@ -9,7 +10,10 @@ pub mod dio_type;
 pub mod dio;
 #[path = "src/exti.rs"]
 pub mod exti;
+
 #[path = "type/exti_type.rs"]
 pub mod exti_type;
+#[path = "type/mcu_type.rs"]
+pub mod mcu_type;
 #[path = "src/interrupcallback.rs"]
 pub mod interrupcallback;

@@ -18,6 +18,7 @@ pub struct ComM_NetWorkHandleConfig{
     pub network_handle: ComM_NetWorkHandleType,
     pub user: ComMUser,
 }
+
 const COMM_NETWORK_HANDLE_CONFIG: &[ComM_NetWorkHandleConfig] = 
     &[
     ComM_NetWorkHandleConfig {
@@ -33,7 +34,7 @@ const COMM_NETWORK_HANDLE_CONFIG: &[ComM_NetWorkHandleConfig] =
         user: ComMUser::MANAGEMENT_CAN,
     },
 ];
-pub const COMM_NETWORK_HANDLE_COUNT: usize = COMM_NETWORK_HANDLE_CONFIG.len();
+pub const COMM_NETWORK_HANDLE_COUNT: usize = 4;
 pub fn comm_get_network_handle_config() -> &'static [ComM_NetWorkHandleConfig] {
     &COMM_NETWORK_HANDLE_CONFIG
 }

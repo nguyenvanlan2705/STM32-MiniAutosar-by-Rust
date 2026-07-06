@@ -76,7 +76,7 @@ pub struct PortPinConfig {
 // The port_config struct defines the configuration for a GPIO port, including an array of pin configurations.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]    
 pub struct PortConfig{
-    pub pins: &'static [PortPinConfig]
+    pub ports: &'static [PortPinConfig]
 }
 
 #[repr(C)]

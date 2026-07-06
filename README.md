@@ -9,6 +9,7 @@ The active demo currently covers:
 - Custom `no_std` / `no_main` startup and vector table.
 - Register-level RCC, GPIO, SYSCFG, EXTI, and NVIC access.
 - MCAL-style `Mcu`, `Port`, `Dio`, and `Exti` modules.
+- Register-level clock and SysTick draft.
 - Register files are grouped into `src/register/type`, `src/register/src`, and `src/register/cfg`.
 - MCAL files are grouped into `src/mcal/type`, `src/mcal/src`, and `src/mcal/cfg`.
 - PA0 user button mapped to EXTI0.
@@ -19,6 +20,7 @@ The active demo currently covers:
 - IoIf RX indication draft for the PA0 button event.
 - IoIf TX write/toggle/confirmation draft for LED output PD12..PD15.
 - IoIf TX group PDU draft for grouped LED writes.
+- ComM draft for requested/current communication mode management.
 - Interrupt/shared state currently uses atomics where practical:
   - `AtomicU8` for small status/count tables.
   - `AtomicUsize` for stored callback addresses in the EXTI callback table.
@@ -48,6 +50,14 @@ PA0 EXTI0 interrupt
 -> IoIf TxConfirmation records the result
 ```
 
+Current ComM flow:
+
+```text
+main.rs requests APP_GPIO FULL_COMMUNICATION once
+-> comm_mainfunction() processes the request in the loop
+-> LED/button demo runs when GPIO current mode is FULL_COMMUNICATION
+```
+
 ## Documentation
 
 - `docs/Architecture.md`: current architecture and active runtime flow.
@@ -58,3 +68,5 @@ PA0 EXTI0 interrupt
 - `docs/Exti.md`: EXTI MCAL status and current PA0 -> EXTI0 flow.
 - `docs/ActivationSteps.md`: GPIO, DIO, EXTI, NVIC, RTT, and delay checklist.
 - `docs/GlobalData.md`: notes for choosing data types for global/static variables.
+- `docs/ComM.md`: current ComM draft, requested/current mode flow, and limitations.
+- `docs/SysTick.md`: current SysTick register draft and next tick-counter step.

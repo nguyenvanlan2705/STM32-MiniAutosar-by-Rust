@@ -26,6 +26,7 @@ BSW                          partially active
     |
     +-- IoHwAb              active for button/LED demo
     +-- IoIf                RX indication and TX confirmation draft active for GPIO demo
+    +-- Management/ComM     draft requested/current mode manager
     +-- PduR / Com          future idea
     |
     v
@@ -34,15 +35,18 @@ MCAL                         active
     +-- Port
     +-- Dio
     +-- Exti
+    +-- SysTick             draft not active in main yet
     +-- Nvic
     |
     v
 Register Layer
     +-- RCC
+    +-- Clock
     +-- GPIO
     +-- SYSCFG
     +-- EXTI
     +-- NVIC
+    +-- SysTick
     |
     v
 Startup / Vector Table
@@ -61,6 +65,9 @@ src/register/cfg     register constants/common addresses
 src/mcal/type        MCAL public data types
 src/mcal/src         MCAL driver implementation
 src/mcal/cfg         MCAL configuration objects
+
+src/bsw/cfg          generated-style BSW config objects
+src/bsw/management   management modules such as ComM
 ```
 
 ## Current Active Runtime Flow
@@ -73,9 +80,11 @@ Custom Reset handler
     v
 main()
     |
-    +-- enable HSI through MCAL Mcu
+    +-- initialize clock through MCAL Mcu
     +-- configure PA0 and PD12..PD15 through MCAL Port
     +-- configure PA0 -> EXTI0 through MCAL Exti
+    +-- initialize IoIf
+    +-- initialize ComM and request APP_GPIO FULL_COMMUNICATION
     |
     v
 button interrupt on PA0
@@ -112,6 +121,18 @@ IoHwAb maps LED requests to MCAL Dio
     |
     v
 IoIf records TX confirmation for the PDU
+```
+
+ComM now gates the GPIO demo:
+
+```text
+main loop
+    |
+    +-- comm_mainfunction()
+    +-- comm_getcurrentcommode(GPIO)
+    |
+    +-- if FULL_COMMUNICATION:
+          run IoIf RX/TX LED demo
 ```
 
 Current demo hardware mapping:
@@ -186,6 +207,27 @@ IoIf TX currently has separate config structs for single-channel TX PDUs and gro
 
 TX confirmation currently records the command result (`IOIF_E_OK` or `IOIF_E_NOT_OK`). It is not an output-state table. If IoIf needs to report whether a LED is currently ON or OFF after a toggle, that should be tracked separately.
 
+ComM currently models communication mode management only:
+
+```text
+comm_requestcommode(user, requested_mode)
+    -> requested mode table
+comm_mainfunction()
+    -> current mode table
+comm_getcurrentcommode(network)
+    -> current mode
+```
+
+ComM is now lightly active in the main GPIO demo loop as a mode gate.
+
+SysTick is present as a register-level draft:
+
+```text
+register::systick::systick_init(core_clock_hz, tick_hz)
+```
+
+It is not called from `main.rs` yet because the current `SysTick_Handler` still loops forever. The next step is an MCAL SysTick handler/tick counter.
+
 Shared state guideline:
 
 ```text
@@ -255,6 +297,12 @@ IoIf RX indication for button event
     |
     v
 IoIf TX confirmation for LED output
+    |
+    v
+ComM requested/current mode management
+    |
+    v
+SysTick-driven periodic main functions
     |
     v
 RTE/App runnable split

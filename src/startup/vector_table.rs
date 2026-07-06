@@ -126,7 +126,7 @@ pub extern "C" fn PendSV() {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn SysTick() {
+pub extern "C" fn SysTick_Handler() {
     loop {
         cortex_m::asm::nop();
     }
@@ -208,7 +208,7 @@ pub static __EXCEPTIONS: [Vector; 14] = [
     Vector { handler: DebugMonitor }, // 12 Debug Monitor
     Vector { reserved: 0 },           // 13 Reserved
     Vector { handler: PendSV },       // 14 PendSV
-    Vector { handler: SysTick },      // 15 SysTick
+    Vector { handler: SysTick_Handler },      // 15 SysTick
 ];
 
 /// 86 vector ngắt ngoại vi (IRQ 0..85) của STM32F411.

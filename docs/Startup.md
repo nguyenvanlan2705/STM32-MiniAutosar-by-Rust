@@ -29,6 +29,7 @@ Implemented:
 - `EXTI0_IRQHandler` dispatches to the MCAL EXTI interrupt handler.
 - EXTI1..EXTI4 vector entries are wired.
 - EXTI9_5 and EXTI15_10 grouped handlers are wired.
+- SysTick vector entry is wired to `SysTick_Handler`.
 
 The project keeps `use stm32f4 as _;` so the PAC crate is linked, but the PAC runtime vector table is not used.
 
@@ -127,6 +128,14 @@ IRQ9  -> EXTI3_IRQHandler()      -> exti_irq_handler(LINE3)
 IRQ10 -> EXTI4_IRQHandler()      -> exti_irq_handler(LINE4)
 IRQ23 -> EXTI9_5_IRQHandler()    -> exti_group_irq_handler(LINE5..LINE9)
 IRQ40 -> EXTI15_10_IRQHandler()  -> exti_group_irq_handler(LINE10..LINE15)
+SysTick exception -> SysTick_Handler()
+```
+
+Current SysTick note:
+
+```text
+SysTick_Handler currently loops forever.
+Do not enable SysTick interrupt in main until it dispatches to a real tick handler.
 ```
 
 ## Recommended Layering
@@ -159,6 +168,21 @@ Configured callback
     |
     v
 IoHwAb / IoIf / App-level behavior
+```
+
+Recommended SysTick layering:
+
+```text
+Vector table
+    |
+    v
+SysTick_Handler
+    |
+    v
+MCAL SysTick tick handler
+    |
+    v
+Atomic tick counter
 ```
 
 ## Common Error

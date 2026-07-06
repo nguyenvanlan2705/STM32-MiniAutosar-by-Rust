@@ -4,11 +4,16 @@ pub mod gpio_type;
 pub mod rcc_type;
 #[path = "type/syscfg_type.rs"]
 pub mod syscfg_type;
+#[path = "type/clock_type.rs"]
+pub mod clock_type;
 #[path = "type/exti_type.rs"]
 pub mod exti_type;
 #[path = "type/nvic_type.rs"]
 pub mod nvic_type;
-
+#[path = "type/systick_type.rs"]
+pub mod systick_type;
+#[path = "src/systick.rs"]
+pub mod systick;
 #[path = "src/gpio.rs"]
 pub mod gpio;
 #[path = "src/dio.rs"]
@@ -19,6 +24,7 @@ pub mod syscfg;
 pub mod exti;
 #[path = "src/nvic.rs"]
 pub mod nvic;
-
+#[path = "src/clock.rs"]
+pub mod clock;
 #[path = "cfg/common.rs"]
 pub mod common;

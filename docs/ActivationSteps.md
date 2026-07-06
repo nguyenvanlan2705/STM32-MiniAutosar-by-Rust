@@ -351,3 +351,75 @@ Current LED group PDU IDs:
 16. For interrupt-shared globals, is the datatype atomic or otherwise protected?
 17. For callback/global pointer storage, are you using a pointer-sized type such as `usize`/`AtomicUsize`?
 ```
+
+## 12. Activate ComM Minimal Flow
+
+Current ComM is a mode manager draft. It does not start real CAN/UART communication yet.
+
+```text
+1. Define a generated-style ComM user in comm_cfg.rs
+   Example: ComMUser::APP_GPIO
+
+2. Map the user to a network handle
+   APP_GPIO -> GPIO
+
+3. Initialize ComM
+   comm_init()
+
+4. Request a mode
+   comm_requestcommode(APP_GPIO, FULL_COMMUNICATION)
+
+5. Run the periodic processor
+   comm_mainfunction()
+
+6. Read the current mode
+   comm_getcurrentcommode(GPIO)
+```
+
+Important:
+
+```text
+Requested mode and current mode are separate.
+SILENT_COMMUNICATION is a current/internal mode, not a normal user request.
+```
+
+## 13. Activate SysTick Draft
+
+Current SysTick register draft exists, but it is not active in `main.rs` yet.
+
+Low-level register flow:
+
+```text
+1. Get system clock from MCAL Mcu
+   HSI currently means 16 MHz
+
+2. Choose tick rate
+   Example: 1000 Hz for 1 ms
+
+3. Calculate reload
+   reload = core_clock_hz / tick_hz - 1
+
+4. Write SysTick registers
+   SYST_RVR = reload
+   SYST_CVR = 0
+   SYST_CSR = ENABLE | TICKINT | CLKSOURCE
+```
+
+Important:
+
+```text
+SysTick_Handler currently loops forever.
+Do not enable SysTick interrupt until the handler dispatches to a tick counter.
+```
+
+Recommended next flow:
+
+```text
+SysTick_Handler
+    |
+    v
+mcal::systick::systick_irq_handler()
+    |
+    v
+SYSTEM_TICK_MS += 1
+```

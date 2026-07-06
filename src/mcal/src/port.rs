@@ -5,18 +5,18 @@ use crate::register::gpio::{port_write_mode, port_write_outputtype, port_write_o
                             port_write_pull,enable_portx_clock, get_port_register};
 
 pub fn port_init() {
-    for pin_config in PORT_CONFIG.pins {
+    for port_config in PORT_CONFIG.ports {
         // Enable the clock for the specified port
-        enable_portx_clock(pin_config.port);
+        enable_portx_clock(port_config.port);
         // Get the base address of the port register
-        let port_register = get_port_register(pin_config.port);
+        let port_register = get_port_register(port_config.port);
         // Configure the pin mode
-        port_write_mode(port_register, pin_config.pin, pin_config.mode);
+        port_write_mode(port_register, port_config.pin, port_config.mode);
         // Configure the output type
-        port_write_outputtype(port_register, pin_config.pin, pin_config.output_type);
+        port_write_outputtype(port_register, port_config.pin, port_config.output_type);
         // Configure the output speed
-        port_write_outputspeed(port_register, pin_config.pin, pin_config.output_speed);
+        port_write_outputspeed(port_register, port_config.pin, port_config.output_speed);
         // Configure the pull-up/pull-down resistors
-        port_write_pull(port_register, pin_config.pin, pin_config.pull);
+        port_write_pull(port_register, port_config.pin, port_config.pull);
     }
 }

@@ -20,6 +20,8 @@ Because some of these variables are accessed from both normal code and interrupt
 | `IOIF_INDICATION_TABLE` | `[AtomicU8; IOIF_RX_PDU_COUNT]` | One small flag/result value per RX PDU |
 | `IOIF_TX_CONFIRMATION_TABLE` | `[AtomicU8; IOIF_TX_PDU_COUNT]` | One small confirmation result per TX PDU |
 | `IOIF_TX_GROUP_CONFIRMATION_TABLE` | `[AtomicU8; IOIF_TX_PDU_GROUP_COUNT]` | One small confirmation result per TX group PDU |
+| `COMM_CURRENTCOMMODE` | `[AtomicU8; COMM_NETWORK_HANDLE_COUNT]` | Current communication mode per network handle |
+| `COMM_REQUESTEDCOMMODE` | `[AtomicU8; COMM_NETWORK_HANDLE_COUNT]` | Requested communication mode per network handle |
 | `EXTI_CALLBACK` | `[AtomicUsize; 16]` | Stores function pointer addresses for EXTI lines |
 | `PORT_CONFIG`, `DIO_CHANNEL_CONFIG`, `EXTI_CONFIG` | `const` config objects/slices | Read-only configuration |
 

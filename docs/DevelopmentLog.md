@@ -205,7 +205,7 @@ Reset
     v
 main()
     |
-    +-- mcal::mcu::enable_hsi()
+    +-- mcal::mcu::mcu_init()
     +-- mcal::port::port_init()
     +-- mcal::exti::exti_init()
     |
@@ -362,6 +362,75 @@ PduR_RxIndication()
 PduR_TxConfirmation()
 ```
 
+## Phase 14 - ComM Draft
+
+Started BSW management layer with ComM:
+
+- Added `src/bsw/management/comm/comm.rs`.
+- Added `src/bsw/management/comm/comm_type.rs`.
+- Added generated-style ComM config in `src/bsw/cfg/comm_cfg.rs`.
+- Added `ComMUser` as a config-level type:
+  - `APP_GPIO`
+  - `DIAG_UART`
+  - `MANAGEMENT_CAN`
+  - `APP_SPI`
+- Added network handles:
+  - `GPIO`
+  - `UART`
+  - `CAN`
+  - `SPI`
+- Added current mode table and requested mode table using `AtomicU8`.
+- Added `comm_requestcommode()` to store requested mode by configured user.
+- Added `comm_mainfunction()` to process requested mode into current mode.
+- Added `comm_getcurrentcommode()` to read the current network mode.
+
+Important ComM lesson:
+
+```text
+comm_requestcommode() receives a request.
+comm_mainfunction() processes the request.
+comm_getcurrentcommode() reports current mode.
+```
+
+Current limitation:
+
+```text
+SILENT_COMMUNICATION has no real transition trigger yet because BusSM/Nm/timer flow is not implemented.
+```
+
+## Phase 15 - Clock and SysTick Draft
+
+Started the first timer/clock direction:
+
+- Added register clock helper layer:
+  - `src/register/type/clock_type.rs`
+  - `src/register/src/clock.rs`
+- Moved HSI enable flow behind MCAL Mcu init:
+  - `mcal::mcu::mcu_init()`
+  - `mcal::mcu::mcu_get_system_clock_hz()`
+- Added SysTick register block:
+  - `src/register/type/systick_type.rs`
+- Added low-level SysTick init draft:
+  - `src/register/src/systick.rs`
+  - `systick_init(core_clock_hz, tick_hz)`
+- Added SysTick vector entry in startup.
+- Kept SysTick inactive in `main.rs`/`mcu_init()` until the handler can dispatch to a real tick counter.
+
+Important clock lesson:
+
+```text
+The value 16 MHz is not stored directly in an RCC register.
+RCC registers store the selected clock source.
+If SYSCLK source is HSI, software knows from the reference manual that HSI is 16 MHz.
+```
+
+Current SysTick limitation:
+
+```text
+SysTick register init exists, but it is not active in main.
+SysTick_Handler still loops forever, so enabling SysTick interrupt now would trap the CPU in the handler.
+```
+
 ## Current Status
 
 Completed/mostly completed:
@@ -392,6 +461,11 @@ Completed/mostly completed:
 - LED group demo cases now route through `ioif_write_tx_group_state()`
 - Single LED TX now supports `IoIf_OutputType::TOGGLE`
 - IoHwAb button count and IoIf RX/TX state tables now use `AtomicU8`
+- ComM draft exists under `src/bsw/management/comm`
+- ComM is now lightly used in `main.rs` to gate the GPIO demo behind `FULL_COMMUNICATION`
+- Register clock and SysTick draft files exist
+- `main.rs` now initializes Mcu through `mcu_init()` instead of calling HSI enable directly
+- BSW config files now live under `src/bsw/cfg`
 - Register layer files are now grouped under `src/register/type`, `src/register/src`, and `src/register/cfg` while keeping the old public module paths through `src/register/mod.rs`.
 - MCAL Port/Dio/Exti configuration objects now live under `src/mcal/cfg`.
 - MCAL type files now live under `src/mcal/type` and MCAL driver implementation files now live under `src/mcal/src` while keeping old public module paths through `src/mcal/mod.rs`.
@@ -417,9 +491,8 @@ Scaffolded but not yet active in the main flow:
 
 Next recommended work:
 
-1. Normalize config naming/layout across MCAL and BSW before building a generator.
-2. Move LED pattern logic out of `main.rs` into App/RTE layer.
-3. Decide how `ioif_write_tx_state()` should report lower-layer failure separately from confirmation-table update status.
-4. Add an output-state table if IoIf needs to report current ON/OFF state separately from TX confirmation result.
-5. Remove unnecessary `unsafe` blocks around atomic IoIf RX helpers.
-6. Add bounds checks to EXTI callback register/get helpers before indexing line tables.
+1. Add an MCAL SysTick wrapper and tick counter.
+2. Change `SysTick_Handler` to dispatch to the MCAL SysTick handler instead of looping forever.
+3. Use SysTick tick count to call `comm_mainfunction()` periodically instead of every loop.
+4. Move LED pattern logic out of `main.rs` into App/RTE layer.
+5. Add a simple ComM internal state table if continuing toward AUTOSAR-like state machine behavior.

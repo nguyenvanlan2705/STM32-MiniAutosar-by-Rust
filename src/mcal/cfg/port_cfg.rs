@@ -3,7 +3,7 @@ use crate::register::gpio_type::{
 };
 
 pub const PORT_CONFIG: PortConfig = PortConfig {
-    pins: &[
+    ports: &[
         PortPinConfig {
             port: PORT::D,
             pin: PIN::P12,
