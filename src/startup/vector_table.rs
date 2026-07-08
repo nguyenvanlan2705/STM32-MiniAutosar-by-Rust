@@ -10,6 +10,7 @@
 
 #![allow(non_snake_case)]
 use crate::register::syscfg_type::EXTILINE;
+use crate::mcal::mcu::systick_1ms_handler;
 use crate::mcal::interrupcallback::{exti_irq_handler, exti_group_irq_handler};
 
 /// Một phần tử trong bảng vector: hoặc là con trỏ hàm handler,
@@ -127,9 +128,7 @@ pub extern "C" fn PendSV() {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn SysTick_Handler() {
-    loop {
-        cortex_m::asm::nop();
-    }
+    systick_1ms_handler();
 }
 
 /// Handler mặc định cho mọi ngắt ngoại vi chưa được nối riêng.

@@ -72,6 +72,7 @@ pub struct PortPinConfig {
     pub output_type: OUTPUTTYPE,
     pub output_speed: OUTPUTSPEED,
     pub pull: PULL,
+    pub alternate_function: Dio_AlternateFunctionType, // Added field for alternate function
 }
 // The port_config struct defines the configuration for a GPIO port, including an array of pin configurations.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]    
@@ -101,4 +102,23 @@ pub enum Dio_LevelType{
     HIGH = 1,
 }
 
-
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Dio_AlternateFunctionType{
+    AF0,
+    AF1,
+    AF2,
+    AF3,
+    AF4,
+    AF5,
+    AF6,
+    AF7,
+    AF8,
+    AF9,
+    AF10,
+    AF11,
+    AF12,
+    AF13,
+    AF14,
+    AF15,
+    NONE,
+}

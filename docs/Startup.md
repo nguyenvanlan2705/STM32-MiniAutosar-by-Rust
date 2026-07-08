@@ -134,8 +134,8 @@ SysTick exception -> SysTick_Handler()
 Current SysTick note:
 
 ```text
-SysTick_Handler currently loops forever.
-Do not enable SysTick interrupt in main until it dispatches to a real tick handler.
+SysTick_Handler dispatches to the MCAL Mcu tick handler and returns.
+It must stay short because it runs every 1 ms.
 ```
 
 ## Recommended Layering

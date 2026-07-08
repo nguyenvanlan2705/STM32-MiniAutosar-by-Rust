@@ -16,7 +16,7 @@ Main goals:
 ## Current Architecture
 
 ```text
-Application                  scaffolded; LED pattern logic still lives in main.rs
+Application                  active for button/LED demo runnables
     |
     v
 RTE                          scaffolded; not active in main.rs yet
@@ -27,6 +27,7 @@ BSW                          partially active
     +-- IoHwAb              active for button/LED demo
     +-- IoIf                RX indication and TX confirmation draft active for GPIO demo
     +-- Management/ComM     draft requested/current mode manager
+    +-- Services/Scheduler  cyclic scheduler driven by SysTick tick count
     +-- PduR / Com          future idea
     |
     v
@@ -35,7 +36,8 @@ MCAL                         active
     +-- Port
     +-- Dio
     +-- Exti
-    +-- SysTick             draft not active in main yet
+    +-- Uart                draft polling init/write/read path
+    +-- SysTick             active as 1 ms system tick source
     +-- Nvic
     |
     v
@@ -47,6 +49,7 @@ Register Layer
     +-- EXTI
     +-- NVIC
     +-- SysTick
+    +-- USART
     |
     v
 Startup / Vector Table
@@ -81,10 +84,12 @@ Custom Reset handler
 main()
     |
     +-- initialize clock through MCAL Mcu
+    +-- initialize SysTick 1 ms tick through MCAL Mcu
     +-- configure PA0 and PD12..PD15 through MCAL Port
     +-- configure PA0 -> EXTI0 through MCAL Exti
-    +-- initialize IoIf
-    +-- initialize ComM and request APP_GPIO FULL_COMMUNICATION
+    +-- initialize scheduler runtime state
+    +-- initialize IoIf and ComM through scheduler one-shot init
+    +-- request APP_GPIO FULL_COMMUNICATION
     |
     v
 button interrupt on PA0
@@ -108,10 +113,10 @@ IoHwAb calls IoIf RxIndication for PDU 0x100
 IoIf marks the RX PDU indication as active
     |
     v
-main loop reads button value through IoIf RX
+1 ms scheduler runnable reads button value through IoIf RX
     |
     v
-main loop writes LED single/group state through IoIf TX PDU IDs
+App LED runnable writes LED single/group state through IoIf TX PDU IDs
     |
     v
 IoIf maps TX PDU IDs to IoHwAb LED or LED group requests
@@ -123,16 +128,19 @@ IoHwAb maps LED requests to MCAL Dio
 IoIf records TX confirmation for the PDU
 ```
 
-ComM now gates the GPIO demo:
+ComM now gates the GPIO demo from scheduler runnables:
 
 ```text
-main loop
+scheduler 10 ms runnable
     |
     +-- comm_mainfunction()
+
+scheduler app runnables
+    |
     +-- comm_getcurrentcommode(GPIO)
     |
     +-- if FULL_COMMUNICATION:
-          run IoIf RX/TX LED demo
+          run IoIf RX/TX LED demo logic
 ```
 
 Current demo hardware mapping:
@@ -144,6 +152,8 @@ Current demo hardware mapping:
 | Orange LED | PD13 | IoIf TX -> IoHwAb LED -> Dio -> GPIO |
 | Red LED | PD14 | IoIf TX -> IoHwAb LED -> Dio -> GPIO |
 | Blue LED | PD15 | IoIf TX -> IoHwAb LED -> Dio -> GPIO |
+| USART2 TX | PA2 | Port AF7 -> MCAL Uart -> USART2 |
+| USART2 RX | PA3 | Port AF7 -> MCAL Uart -> USART2 |
 
 ## Current Build Status
 
@@ -218,15 +228,17 @@ comm_getcurrentcommode(network)
     -> current mode
 ```
 
-ComM is now lightly active in the main GPIO demo loop as a mode gate.
+ComM is now active through scheduler runnables as a mode gate.
 
-SysTick is present as a register-level draft:
+SysTick is active as the scheduler time base:
 
 ```text
 register::systick::systick_init(core_clock_hz, tick_hz)
+mcal::mcu::mcu_init_systick_1ms()
+mcal::mcu::mcu_get_system_tick_count()
 ```
 
-It is not called from `main.rs` yet because the current `SysTick_Handler` still loops forever. The next step is an MCAL SysTick handler/tick counter.
+`SysTick_Handler` dispatches to the MCAL Mcu tick handler and must return quickly.
 
 Shared state guideline:
 
@@ -283,6 +295,7 @@ cortex_m::asm::isb()
 ```
 
 GPIO/RCC/EXTI/NVIC access is defined from the STM32F411 Reference Manual.
+USART access is also being added manually for the first UART draft.
 
 ## Future Direction
 
@@ -302,7 +315,7 @@ IoIf TX confirmation for LED output
 ComM requested/current mode management
     |
     v
-SysTick-driven periodic main functions
+SysTick-driven cyclic scheduler
     |
     v
 RTE/App runnable split

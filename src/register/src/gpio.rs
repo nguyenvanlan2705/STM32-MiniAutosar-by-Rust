@@ -52,3 +52,18 @@ pub fn port_write_pull(port_register: *mut crate::register::gpio_type::PortRegis
         core::ptr::write_volatile(&mut (*port_register).pupdr, pupdr_value);
     }
 }
+ pub fn port_write_alternate_function(port_register: *mut crate::register::gpio_type::PortRegister, pin: PIN, af: u8) {
+    unsafe {
+        if pin as u32 <= 7 {
+            let shift = (pin as u32) * 4;
+            let afr_value = core::ptr::read_volatile(&(*port_register).afrl);
+            let new_afr_value = (afr_value & !(0b1111 << shift)) | ((af as u32 & 0b1111) << shift);
+            core::ptr::write_volatile(&mut (*port_register).afrl, new_afr_value);
+        } else {
+            let shift = ((pin as u32) - 8) * 4;
+            let afr_value = core::ptr::read_volatile(&(*port_register).afrh);
+            let new_afr_value = (afr_value & !(0b1111 << shift)) | ((af as u32 & 0b1111) << shift);
+            core::ptr::write_volatile(&mut (*port_register).afrh, new_afr_value);
+        }
+    }
+}

@@ -1,4 +1,3 @@
-
 #![allow(non_snake_case)]
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
@@ -30,11 +29,11 @@ pub enum ComM_NetWorkHandleType{
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ComM_StateType{
-  COMM_NO_COM_NO_PENDING_REQUEST  = 0,
-  COMM_NO_COM_REQUEST_PENDING	 = 1,
-  COMM_FULL_COM_NETWORK_REQUESTED = 2,
-  COMM_FULL_COM_READY_SLEEP	   = 3,
-  COMM_SILENT_COM				 = 4
+  COMM_NO_COM_NO_PENDING_REQUEST ,
+  COMM_NO_COM_REQUEST_PENDING,
+  COMM_FULL_COM_NETWORK_REQUESTED,
+  COMM_FULL_COM_READY_SLEEP,
+  COMM_SILENT_COM,
 }
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

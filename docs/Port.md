@@ -11,7 +11,7 @@ It is responsible for:
 - Output type
 - Output speed
 - Pull-up / pull-down
-- Future alternate function
+- Alternate function selection
 
 It must not read or write pin levels. That is Dio's responsibility.
 
@@ -26,6 +26,8 @@ The current Port configuration initializes:
 | PD14 | Red LED | Output | None |
 | PD15 | Blue LED | Output | None |
 | PA0 | User button | Input | Pulldown |
+| PA2 | USART2 TX | Alternate AF7 | None |
+| PA3 | USART2 RX | Alternate AF7 | None |
 
 The configuration currently lives in `src/mcal/cfg/port_cfg.rs`.
 
@@ -102,6 +104,7 @@ pub const PORT_CONFIG: PortConfig = PortConfig {
             output_type: OUTPUTTYPE::PUSHPULL,
             output_speed: OUTPUTSPEED::HIGH,
             pull: PULL::NONE,
+            alternate_function: Dio_AlternateFunctionType::NONE,
         },
         PortPinConfig {
             port: PORT::A,
@@ -110,6 +113,16 @@ pub const PORT_CONFIG: PortConfig = PortConfig {
             output_type: OUTPUTTYPE::PUSHPULL,
             output_speed: OUTPUTSPEED::LOW,
             pull: PULL::PULLDOWN,
+            alternate_function: Dio_AlternateFunctionType::NONE,
+        },
+        PortPinConfig {
+            port: PORT::A,
+            pin: PIN::P2,
+            mode: MODE::ALTERNATE,
+            output_type: OUTPUTTYPE::PUSHPULL,
+            output_speed: OUTPUTSPEED::VERYHIGH,
+            pull: PULL::NONE,
+            alternate_function: Dio_AlternateFunctionType::AF7,
         },
     ],
 };
@@ -127,6 +140,7 @@ Port_Init()
           +-- configure OTYPER
           +-- configure OSPEEDR
           +-- configure PUPDR
+          +-- if mode is ALTERNATE, configure AFRL/AFRH
 ```
 
 More detailed register flow for one pin:
@@ -140,6 +154,7 @@ PortPinConfig
     +-- update one OTYPER bit for the pin
     +-- update two OSPEEDR bits for the pin
     +-- update two PUPDR bits for the pin
+    +-- update four AFR bits when alternate function is selected
 ```
 
 Example: configure PD12 as LED output.
@@ -175,6 +190,14 @@ After this, Dio can read:
 
 ```text
 GPIOA_IDR bit 0
+```
+
+Example: configure PA2 as USART2_TX.
+
+```text
+RCC_AHB1ENR.GPIOAEN = 1
+GPIOA_MODER[5:4]    = 10 alternate function
+GPIOA_AFRL[11:8]    = 0111 AF7
 ```
 
 ## Important Lessons
@@ -246,3 +269,14 @@ So PA0 currently uses pulldown.
 ### 4. Reusing output settings for input pins
 
 For input pins, `OTYPER` and `OSPEEDR` are usually not meaningful for the signal read path, but the config struct may still carry values for consistency.
+
+### 5. Forgetting AFR for alternate pins
+
+For peripherals such as USART, SPI, or PWM, setting `MODE::ALTERNATE` is only half of the configuration.
+
+You must also select the correct alternate function:
+
+```text
+PA2 USART2_TX -> AF7
+PA3 USART2_RX -> AF7
+```

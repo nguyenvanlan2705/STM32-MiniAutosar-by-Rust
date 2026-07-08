@@ -10,6 +10,8 @@ pub mod dio_type;
 pub mod dio;
 #[path = "src/exti.rs"]
 pub mod exti;
+#[path = "src/uart.rs"]
+pub mod uart;
 
 #[path = "type/exti_type.rs"]
 pub mod exti_type;

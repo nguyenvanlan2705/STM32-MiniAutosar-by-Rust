@@ -14,7 +14,7 @@ The current demo configures:
 - Shared IoIf status tables use `AtomicU8`.
 - The EXTI callback table uses `AtomicUsize` because callback addresses are pointer-sized.
 
-The main loop reads the interrupt-updated button count through IoIf RX and writes normal LED states through IoIf TX.
+The main loop now calls the scheduler. Scheduler runnables read the interrupt-updated button count through IoIf RX and write normal LED states through IoIf TX.
 
 ## 1. Activate GPIO Output
 
@@ -383,9 +383,9 @@ Requested mode and current mode are separate.
 SILENT_COMMUNICATION is a current/internal mode, not a normal user request.
 ```
 
-## 13. Activate SysTick Draft
+## 13. Activate SysTick
 
-Current SysTick register draft exists, but it is not active in `main.rs` yet.
+Current SysTick is active as a 1 ms system tick source.
 
 Low-level register flow:
 
@@ -408,18 +408,115 @@ Low-level register flow:
 Important:
 
 ```text
-SysTick_Handler currently loops forever.
-Do not enable SysTick interrupt until the handler dispatches to a tick counter.
+SysTick_Handler must dispatch to the MCAL tick handler and return quickly.
+Do not put application logic, delay loops, or logging in SysTick_Handler.
 ```
 
-Recommended next flow:
+Current flow:
 
 ```text
 SysTick_Handler
     |
     v
-mcal::systick::systick_irq_handler()
+mcal::mcu::systick_1ms_handler()
     |
     v
 SYSTEM_TICK_MS += 1
+```
+
+## 14. Activate Scheduler
+
+The scheduler is a cooperative/cyclic scheduler driven by the SysTick tick count.
+
+Startup flow:
+
+```text
+1. Initialize MCU clock
+   mcu_init()
+
+2. Initialize SysTick 1 ms
+   mcu_init_systick_1ms()
+
+3. Initialize Port and EXTI
+   port_init()
+   exti_init()
+
+4. Initialize scheduler runtime state
+   scheduler_init()
+
+5. Run one-shot service init
+   scheduler_oneshot_task()
+
+6. Request ComM mode
+   comm_requestcommode(APP_GPIO, FULL_COMMUNICATION)
+
+7. Enter main loop
+   loop {
+       scheduler_mainfunction();
+   }
+```
+
+Current runnable periods:
+
+```text
+1 ms    button/LED app logic when GPIO is FULL_COMMUNICATION
+10 ms   comm_mainfunction()
+100 ms  reserved
+500 ms  LED toggle demo when GPIO is FULL_COMMUNICATION
+```
+
+Important:
+
+```text
+Scheduler decides when a runnable is due.
+ComM decides whether GPIO app logic is allowed to run.
+SysTick only provides time.
+```
+
+## 15. Activate USART2 Polling Draft
+
+Current UART draft targets USART2:
+
+```text
+PA2 -> USART2_TX -> AF7
+PA3 -> USART2_RX -> AF7
+```
+
+Activation flow:
+
+```text
+1. Configure PA2 and PA3 through Port config
+   mode = ALTERNATE
+   alternate_function = AF7
+
+2. Run Port init
+   port_init()
+
+3. Enable USART2 peripheral clock
+   RCC_APB1ENR.USART2EN = 1
+
+4. Configure baud rate
+   USART_BRR = peripheral_clock / baudrate
+
+5. Enable TX and RX
+   USART_CR1.TE = 1
+   USART_CR1.RE = 1
+
+6. Enable USART
+   USART_CR1.UE = 1
+
+7. For polling TX
+   wait until USART_SR.TXE = 1
+   write byte to USART_DR
+
+8. For polling RX
+   wait until USART_SR.RXNE = 1
+   read byte from USART_DR
+```
+
+Important:
+
+```text
+Alternate mode alone is not enough.
+The GPIO AFR register must also select AF7 for PA2/PA3.
 ```

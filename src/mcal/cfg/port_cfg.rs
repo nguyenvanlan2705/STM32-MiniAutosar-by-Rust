@@ -1,5 +1,5 @@
 use crate::register::gpio_type::{
-    MODE, OUTPUTSPEED, OUTPUTTYPE, PIN, PORT, PULL, PortConfig, PortPinConfig,
+    MODE, OUTPUTSPEED, OUTPUTTYPE, PIN, PORT, PULL, PortConfig, PortPinConfig, Dio_AlternateFunctionType
 };
 
 pub const PORT_CONFIG: PortConfig = PortConfig {
@@ -11,6 +11,7 @@ pub const PORT_CONFIG: PortConfig = PortConfig {
             output_type: OUTPUTTYPE::PUSHPULL,
             output_speed: OUTPUTSPEED::HIGH,
             pull: PULL::NONE,
+            alternate_function: Dio_AlternateFunctionType::NONE,
         },
         PortPinConfig {
             port: PORT::D,
@@ -19,6 +20,7 @@ pub const PORT_CONFIG: PortConfig = PortConfig {
             output_type: OUTPUTTYPE::PUSHPULL,
             output_speed: OUTPUTSPEED::HIGH,
             pull: PULL::NONE,
+            alternate_function: Dio_AlternateFunctionType::NONE,
         },
         PortPinConfig {
             port: PORT::D,
@@ -27,6 +29,7 @@ pub const PORT_CONFIG: PortConfig = PortConfig {
             output_type: OUTPUTTYPE::PUSHPULL,
             output_speed: OUTPUTSPEED::HIGH,
             pull: PULL::NONE,
+            alternate_function: Dio_AlternateFunctionType::NONE,
         },
         PortPinConfig {
             port: PORT::D,
@@ -35,6 +38,7 @@ pub const PORT_CONFIG: PortConfig = PortConfig {
             output_type: OUTPUTTYPE::PUSHPULL,
             output_speed: OUTPUTSPEED::HIGH,
             pull: PULL::NONE,
+            alternate_function: Dio_AlternateFunctionType::NONE,
         },
         PortPinConfig {
             port: PORT::A,
@@ -43,6 +47,25 @@ pub const PORT_CONFIG: PortConfig = PortConfig {
             output_type: OUTPUTTYPE::PUSHPULL,
             output_speed: OUTPUTSPEED::LOW,
             pull: PULL::PULLDOWN,
+            alternate_function: Dio_AlternateFunctionType::NONE,
+        },
+        PortPinConfig {
+            port: PORT::A,
+            pin: PIN::P2,
+            mode: MODE::ALTERNATE,
+            output_type: OUTPUTTYPE::PUSHPULL,
+            output_speed: OUTPUTSPEED::VERYHIGH,
+            pull: PULL::NONE,
+            alternate_function: Dio_AlternateFunctionType::AF7,
+        },
+        PortPinConfig {
+            port: PORT::A,
+            pin: PIN::P3,
+            mode: MODE::ALTERNATE,
+            output_type: OUTPUTTYPE::PUSHPULL,
+            output_speed: OUTPUTSPEED::VERYHIGH,
+            pull: PULL::NONE,
+            alternate_function: Dio_AlternateFunctionType::AF7,
         },
     ],
 };

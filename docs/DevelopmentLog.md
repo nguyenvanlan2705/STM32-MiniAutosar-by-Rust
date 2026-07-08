@@ -398,9 +398,9 @@ Current limitation:
 SILENT_COMMUNICATION has no real transition trigger yet because BusSM/Nm/timer flow is not implemented.
 ```
 
-## Phase 15 - Clock and SysTick Draft
+## Phase 15 - Clock and SysTick
 
-Started the first timer/clock direction:
+Started the first timer/clock direction and enabled the first system tick path:
 
 - Added register clock helper layer:
   - `src/register/type/clock_type.rs`
@@ -414,7 +414,10 @@ Started the first timer/clock direction:
   - `src/register/src/systick.rs`
   - `systick_init(core_clock_hz, tick_hz)`
 - Added SysTick vector entry in startup.
-- Kept SysTick inactive in `main.rs`/`mcu_init()` until the handler can dispatch to a real tick counter.
+- `SysTick_Handler` now dispatches into the MCAL Mcu tick handler.
+- Added `SYSTEM_TICK_COUNT` as an `AtomicU32` tick counter.
+- Added `mcu_get_system_tick_count()` for scheduler/runtime code.
+- `main.rs` now initializes SysTick through `mcu_init_systick_1ms()`.
 
 Important clock lesson:
 
@@ -424,11 +427,157 @@ RCC registers store the selected clock source.
 If SYSCLK source is HSI, software knows from the reference manual that HSI is 16 MHz.
 ```
 
-Current SysTick limitation:
+Important SysTick lesson:
 
 ```text
-SysTick register init exists, but it is not active in main.
-SysTick_Handler still loops forever, so enabling SysTick interrupt now would trap the CPU in the handler.
+SysTick_Handler must be short.
+It should increment or dispatch a tick handler, then return.
+Do not place delay loops, logging, or application logic inside SysTick_Handler.
+```
+
+## Phase 16 - Cyclic Scheduler Draft
+
+Added the first cooperative/cyclic scheduler service:
+
+- Added `src/bsw/services/scheduler.rs`.
+- Added `src/bsw/services/scheduler_type.rs`.
+- Added generated-style scheduler config in `src/bsw/cfg/scheduler_cfg.rs`.
+- Added runnable config table with 1 ms, 10 ms, 100 ms, and 500 ms periodic runnables.
+- `main.rs` now initializes the scheduler and calls one scheduler entry point:
+
+```rust
+loop {
+    scheduler_mainfunction();
+}
+```
+
+Current scheduler flow:
+
+```text
+SysTick_Handler
+    |
+    v
+mcu::systick_1ms_handler()
+    |
+    v
+SYSTEM_TICK_COUNT += 1
+    |
+    v
+main loop
+    |
+    v
+scheduler_mainfunction()
+    |
+    v
+check each runnable period using mcu_get_system_tick_count()
+```
+
+Current runnable mapping:
+
+```text
+1 ms    button app + LED pattern when GPIO network is FULL_COMMUNICATION
+10 ms   comm_mainfunction()
+100 ms  reserved
+500 ms  LED toggle demo when GPIO network is FULL_COMMUNICATION
+```
+
+Important scheduler lesson:
+
+```text
+Scheduler decides when a runnable is called.
+ComM decides whether a network is allowed to run application logic.
+SysTick only provides time; it does not run application tasks directly.
+```
+
+Important runtime-state lesson:
+
+```text
+Scheduler config is const.
+Scheduler last-run tick state must be static because it changes at runtime.
+```
+
+## Phase 17 - ComM Internal State Draft
+
+Added a simple internal state table to the ComM draft:
+
+- Added `COMM_INTERNALSTATE` as an `AtomicU8` table.
+- Added `comm_get_internal_state()`.
+- Added `comm_set_internal_state()`.
+- Added `comm_transition_state()`.
+- Added `comm_internal_state_to_current_mode()`.
+- `comm_mainfunction()` now transitions internal state first, then updates current communication mode.
+
+Current simple transition idea:
+
+```text
+NO_COM_NO_PENDING_REQUEST + FULL request
+    -> NO_COM_REQUEST_PENDING
+
+NO_COM_REQUEST_PENDING + FULL request
+    -> FULL_COM_NETWORK_REQUESTED
+
+FULL_COM_NETWORK_REQUESTED + NO request
+    -> FULL_COM_READY_SLEEP
+
+FULL_COM_READY_SLEEP + NO request
+    -> NO_COM_NO_PENDING_REQUEST
+```
+
+Important ComM state lesson:
+
+```text
+Requested mode is an input.
+Internal state is ComM's private state machine.
+Current mode is what ComM reports to other modules.
+```
+
+## Phase 18 - UART Register/MCAL Draft
+
+Started the first UART direction using USART2:
+
+- Added `src/register/type/uart_type.rs`.
+- Added `src/register/src/uart.rs`.
+- Added `src/mcal/src/uart.rs`.
+- Added USART register block:
+  - `SR`
+  - `DR`
+  - `BRR`
+  - `CR1`
+  - `CR2`
+  - `CR3`
+  - `GTPR`
+- Added USART instances:
+  - `USART1`
+  - `USART2`
+  - `USART6`
+- Added low-level helpers:
+  - enable USART peripheral clock
+  - set baud rate
+  - enable TX/RX
+  - enable USART
+  - polling write
+  - polling read
+  - RXNE interrupt enable draft
+- Added PA2/PA3 alternate-function config for USART2:
+  - PA2: USART2_TX, AF7
+  - PA3: USART2_RX, AF7
+- Port config now carries an `alternate_function` field.
+- Port init writes GPIO AFR when a pin is configured as alternate function.
+- `scheduler_oneshot_task()` now initializes USART2 at 9600 baud.
+
+Important UART lesson:
+
+```text
+GPIO alternate mode is not enough.
+The GPIO AFR register must select the peripheral function, such as AF7 for USART2 PA2/PA3.
+```
+
+Current UART limitation:
+
+```text
+UART init is active through scheduler one-shot init, but no TX/RX runtime demo exists yet.
+Baud calculation currently assumes the USART peripheral clock equals the simple system clock.
+Later USART2 should use PCLK1, while USART1/USART6 should use PCLK2.
 ```
 
 ## Current Status
@@ -462,8 +611,15 @@ Completed/mostly completed:
 - Single LED TX now supports `IoIf_OutputType::TOGGLE`
 - IoHwAb button count and IoIf RX/TX state tables now use `AtomicU8`
 - ComM draft exists under `src/bsw/management/comm`
-- ComM is now lightly used in `main.rs` to gate the GPIO demo behind `FULL_COMMUNICATION`
-- Register clock and SysTick draft files exist
+- ComM internal state table draft exists
+- ComM is now used by the scheduler to gate GPIO app runnables behind `FULL_COMMUNICATION`
+- Register clock and SysTick files exist and SysTick is active as the 1 ms scheduler time base
+- Cyclic scheduler draft exists under `src/bsw/services`
+- Scheduler config table exists under `src/bsw/cfg/scheduler_cfg.rs`
+- Scheduler runtime tick state is sized from the scheduler config table length
+- UART register and MCAL init draft exists for USART2 polling
+- Port config supports alternate-function selection for PA2/PA3 USART2 AF7
+- `main.rs` now runs the app through `scheduler_mainfunction()` instead of directly executing the LED/button demo
 - `main.rs` now initializes Mcu through `mcu_init()` instead of calling HSI enable directly
 - BSW config files now live under `src/bsw/cfg`
 - Register layer files are now grouped under `src/register/type`, `src/register/src`, and `src/register/cfg` while keeping the old public module paths through `src/register/mod.rs`.
@@ -473,26 +629,29 @@ Completed/mostly completed:
 - Added global/static datatype notes in `docs/GlobalData.md`.
 - Root `.gitignore` and `target/` untracking
 
-End-of-day checkpoint:
+Current runtime checkpoint:
 
 ```text
-The GPIO demo flow is stable enough to continue tomorrow from the IoIf/RTE boundary.
 Current main flow:
-PA0 EXTI interrupt -> IoHwAb button -> IoIf RX PDU 0x100 -> main LED pattern
+Reset -> main init -> scheduler_init -> scheduler_oneshot_task -> scheduler_mainfunction loop
+PA0 EXTI interrupt -> IoHwAb button -> IoIf RX PDU 0x100 -> scheduler 1 ms runnable -> app LED pattern
+Scheduler 10 ms runnable -> comm_mainfunction()
+Scheduler 500 ms runnable -> LED toggle demo
 Normal LED writes -> IoIf TX PDU 0x200..0x203
 Grouped LED writes -> IoIf TX group PDU 0x300..0x301
 ```
 
-Scaffolded but not yet active in the main flow:
+Scaffolded or drafted but not yet active in the main flow:
 
 - `src/app`
 - `src/rte`
+- UART TX/RX runtime demo from scheduler/app
 - MCAL placeholders for ADC/CAN/GPT/PWM/SPI/UART/WDG
 
 Next recommended work:
 
-1. Add an MCAL SysTick wrapper and tick counter.
-2. Change `SysTick_Handler` to dispatch to the MCAL SysTick handler instead of looping forever.
-3. Use SysTick tick count to call `comm_mainfunction()` periodically instead of every loop.
-4. Move LED pattern logic out of `main.rs` into App/RTE layer.
-5. Add a simple ComM internal state table if continuing toward AUTOSAR-like state machine behavior.
+1. Hardware-test USART2 TX with a polling write path.
+2. Add MCAL UART write-byte/write-string wrapper APIs.
+3. Add MCU PCLK1/PCLK2 helpers before supporting USART1/USART6 baud rate robustly.
+4. Decide whether 1 ms LED pattern logic and 500 ms LED toggle should control the same LEDs or be separated.
+5. Continue toward UartIf after MCAL UART TX/RX polling is stable.

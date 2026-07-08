@@ -1,4 +1,4 @@
-# SysTick Draft
+# SysTick
 
 ## Purpose
 
@@ -8,7 +8,7 @@ Current goal:
 
 ```text
 Use SysTick as the first system tick source.
-Later use it to drive scheduler-style periodic main functions.
+Use it to drive scheduler-style periodic runnables.
 ```
 
 ## Current Source Layout
@@ -17,6 +17,7 @@ Later use it to drive scheduler-style periodic main functions.
 src/register/type/systick_type.rs  SysTick register block
 src/register/src/systick.rs        low-level SysTick register init
 src/startup/vector_table.rs        SysTick_Handler vector entry
+src/mcal/src/mcu.rs                MCAL tick counter and SysTick wrapper
 ```
 
 Clock helper files:
@@ -90,59 +91,65 @@ SYST_CVR = 0
 SYST_CSR = ENABLE | TICKINT | CLKSOURCE
 ```
 
-## Current Limitation
+## Current Runtime Flow
 
-`SysTick_Handler` is present in the vector table, but currently loops forever.
+SysTick is now active as a 1 ms tick source.
 
-That means:
-
-```text
-Do not call systick_init() in main yet.
-```
-
-If SysTick interrupt is enabled while the handler still loops forever, the CPU will enter the handler on the first tick and stay there.
-
-## Recommended Next Step
-
-Add an MCAL SysTick wrapper and a tick counter:
+Current flow:
 
 ```text
-src/mcal/src/systick.rs
+main()
+    |
+    v
+mcu_init_systick_1ms()
+    |
+    v
+register::systick::systick_init(system_clock_hz, 1000)
+    |
+    v
+SysTick exception every 1 ms
+    |
+    v
+SysTick_Handler
+    |
+    v
+mcu::systick_1ms_handler()
+    |
+    v
+SYSTEM_TICK_COUNT += 1
 ```
 
-Suggested API:
+The scheduler reads time through:
 
 ```rust
-pub fn systick_init_1ms();
-pub fn systick_irq_handler();
-pub fn systick_get_tick_ms() -> u32;
+mcu_get_system_tick_count()
 ```
 
-Suggested flow:
+## Important Rules
+
+SysTick interrupt code must stay short:
 
 ```text
-SysTick exception
-    |
-    v
-SysTick_Handler in startup/vector_table.rs
-    |
-    v
-mcal::systick::systick_irq_handler()
-    |
-    v
-AtomicU32 tick counter += 1
+Good:
+SysTick_Handler -> increment tick -> return
+
+Bad:
+SysTick_Handler -> loop/delay/log/application logic
 ```
 
-Then `main.rs` can call:
+`wrapping_sub()` should be used when comparing tick values:
 
-```text
-systick_init_1ms()
+```rust
+let elapsed = now.wrapping_sub(last);
 ```
 
-and ComM can be run periodically instead of every loop iteration:
+This keeps time comparison correct after the `u32` tick counter wraps around.
+
+## Current Users
 
 ```text
-every 10 ms -> comm_mainfunction()
+Scheduler 1 ms/10 ms/100 ms/500 ms runnables use the system tick.
+ComM is called from the scheduler 10 ms runnable.
 ```
 
 ## Design Rule

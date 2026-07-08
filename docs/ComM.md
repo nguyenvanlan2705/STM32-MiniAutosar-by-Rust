@@ -19,6 +19,8 @@ comm_mainfunction()
 current communication mode table
 ```
 
+The current draft also has an internal state table so ComM can evolve toward a real state machine instead of directly mapping requested mode to current mode.
+
 ## Current Source Layout
 
 ```text
@@ -108,10 +110,16 @@ for each configured network
 read requested mode
     |
     v
-map requested mode to current mode
+read internal state
     |
     v
-if current mode is different, update current mode table
+transition internal state
+    |
+    v
+map internal state to current mode
+    |
+    v
+update internal state and current mode tables
 ```
 
 Read flow:
@@ -147,32 +155,41 @@ This separation matters because later ComM may need to wait for lower layers suc
 
 ## Current Limitations
 
-- `ComM_StateType` is defined but not yet used as a real internal state table.
+- `ComM_StateType` is used as a simple internal state table.
 - `SILENT_COMMUNICATION` has no trigger yet because there is no BusSM/Nm/timer flow.
-- ComM is lightly wired into `main.rs` as a gate for the GPIO demo.
+- ComM is called from the scheduler 10 ms runnable.
+- GPIO application runnables check `comm_getcurrentcommode(GPIO)` before running DIO/IoIf logic.
 
 ## Recommended Next Step
 
-Keep ComM minimal and add an internal state table when moving closer to AUTOSAR ComM:
+Keep ComM minimal and refine the internal state machine only when a lower layer such as UartSM/CanSM/Nm exists:
 
 ```text
 requested_mode
     |
     v
-comm_requested_to_current_mode()
+current internal state
     |
     v
-new_current_mode
+comm_transition_state()
     |
     v
-compare new_current_mode with current_mode
+new internal state
+    |
+    v
+new current mode
 ```
 
-Current demo call shape in `main.rs`:
+Current demo call shape:
 
 ```text
-comm_init()
+main startup:
+comm_init() through scheduler_oneshot_task()
 comm_requestcommode(APP_GPIO, FULL_COMMUNICATION)
+
+scheduler 10 ms runnable:
 comm_mainfunction()
+
+GPIO app runnables:
 comm_getcurrentcommode(GPIO)
 ```
