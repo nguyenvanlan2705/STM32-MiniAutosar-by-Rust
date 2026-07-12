@@ -61,9 +61,10 @@ Each runnable has its own last-run tick entry. This is important because a 1 ms 
 
 ```text
 1 ms    button app + LED pattern when GPIO is FULL_COMMUNICATION
+5 ms    USART RX command draft when GPIO is FULL_COMMUNICATION
 10 ms   comm_mainfunction()
-100 ms  reserved
 500 ms  LED toggle demo when GPIO is FULL_COMMUNICATION
+1000 ms USART TX interrupt demo when GPIO is FULL_COMMUNICATION
 ```
 
 ## ComM Gating
@@ -88,6 +89,52 @@ else:
 ```
 
 Do not gate `comm_mainfunction()` behind `FULL_COMMUNICATION`. ComM needs to run so it can move from requested mode to current mode.
+
+The USART TX demo follows the same gating idea:
+
+```text
+scheduler_runnable_1000ms()
+    |
+    v
+if GPIO network is FULL_COMMUNICATION:
+    build PduInfoType
+    call usartif_transmit(TxPduId 0)
+    UsartIf maps TxPduId to USART2
+    MCAL USART owns async TX interrupt path
+```
+
+This keeps scheduler code above the MCAL USART channel details. MCAL TC interrupt now routes confirmation back into UsartIf by channel.
+
+The USART RX draft is currently checked from the 5 ms runnable:
+
+```text
+scheduler_runnable_5ms()
+    |
+    v
+if GPIO network is FULL_COMMUNICATION:
+    check UsartIf RX PDU status
+    if COMPLETED:
+        inspect static RX test buffer
+        optionally transmit a response through UsartIf TX
+        mark RX as not started so the next request can be armed
+    if not started:
+        pass static RX buffer through PduInfoType
+        call UsartIf RX start/indication draft API
+```
+
+Keep this runnable non-blocking. A blocking USART read inside a cyclic scheduler would hold the main loop and delay every other runnable.
+
+The RX test buffer must be static because MCAL completes RX later in an interrupt. A local stack buffer inside the 5 ms runnable would no longer be valid after the function returns.
+
+For fixed-length RX testing, the scheduler/config length must match the terminal payload exactly:
+
+```text
+111      -> length 3
+111\n    -> length 4
+111\r\n  -> length 5
+```
+
+If the terminal sends extra bytes after the configured RX length, those bytes can remain unread and later cause `ORE`.
 
 ## Toggle Note
 

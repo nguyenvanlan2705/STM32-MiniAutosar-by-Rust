@@ -21,7 +21,7 @@ pub enum ComMReturnType{
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ComM_NetWorkHandleType{
     GPIO,
-    UART,
+    USART,
     CAN,
     SPI
 }

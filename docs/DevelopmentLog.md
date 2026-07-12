@@ -345,17 +345,17 @@ Planned BSW modules:
 
 - IoHwAb
 - IoIf inspired by CanIf
-- UartIf
+- UsartIf
 - PduR
 - Com
 
-UART can be used to simulate PDU flow:
+USART can be used to simulate PDU flow:
 
 ```text
 SOF | ID | LEN | DATA | CRC
 ```
 
-Then UartIf can call:
+Then UsartIf can call:
 
 ```text
 PduR_RxIndication()
@@ -371,12 +371,12 @@ Started BSW management layer with ComM:
 - Added generated-style ComM config in `src/bsw/cfg/comm_cfg.rs`.
 - Added `ComMUser` as a config-level type:
   - `APP_GPIO`
-  - `DIAG_UART`
+  - `DIAG_USART`
   - `MANAGEMENT_CAN`
   - `APP_SPI`
 - Added network handles:
   - `GPIO`
-  - `UART`
+  - `USART`
   - `CAN`
   - `SPI`
 - Added current mode table and requested mode table using `AtomicU8`.
@@ -531,13 +531,14 @@ Internal state is ComM's private state machine.
 Current mode is what ComM reports to other modules.
 ```
 
-## Phase 18 - UART Register/MCAL Draft
+## Phase 18 - USART Register/MCAL Draft
 
-Started the first UART direction using USART2:
+Started the first USART direction using USART2:
 
-- Added `src/register/type/uart_type.rs`.
-- Added `src/register/src/uart.rs`.
-- Added `src/mcal/src/uart.rs`.
+- Added `src/register/type/usart_type.rs`.
+- Added `src/register/src/usart.rs`.
+- Added `src/mcal/src/usart.rs`.
+- Added `src/mcal/cfg/usart_cfg.rs`.
 - Added USART register block:
   - `SR`
   - `DR`
@@ -564,18 +565,53 @@ Started the first UART direction using USART2:
 - Port config now carries an `alternate_function` field.
 - Port init writes GPIO AFR when a pin is configured as alternate function.
 - `scheduler_oneshot_task()` now initializes USART2 at 9600 baud.
+- Added MCAL USART polling wrappers:
+  - `usart_write_bytes()`
+  - `usart_write_string()`
+  - `usart_read_bytes()`
+  - `usart_read_string()`
+- Added a scheduler 1000 ms USART TX demo runnable.
+- USART TX through the MCAL polling path has been hardware-tested successfully.
+- Added USART2 interrupt dispatch through `USART2_IRQHandler`.
+- Added NVIC enable helper usage for USART2 IRQ.
+- Added MCAL USART async TX state:
+  - static TX buffer
+  - TX length
+  - TX index
+  - TX busy flag
+- Added `usart_start_send_async()` to request interrupt-driven TX.
+- USART TX through the MCAL interrupt path has been hardware-tested successfully.
+- Added the first USART RX scheduler/interrupt draft:
+  - `scheduler_runnable_5ms()` checks USART RX only when GPIO network is `FULL_COMMUNICATION`
+  - MCAL USART has per-channel RX buffer, RX length, RX index, and RX busy state
+  - `USART2_IRQHandler` dispatches RX/TX handling through `usart_irq_handler()`
+  - RX testing with scheduler and interrupt is now behaving better than the earlier direct-read approach
+- Refined the MCAL USART async concept toward explicit state-machine APIs:
+  - `usart_start_send_async()`
+  - `usart_get_tx_status()`
+  - `usart_start_receive_async()`
+  - `usart_get_rx_status()`
+  - `usart_read_received_async_data()`
+- Cleaned up key USART async state details:
+  - TX rejects empty data and data larger than the 128-byte TX buffer before starting
+  - TX done state is reset when a new TX request starts
+  - RX done state is reset when a new RX request starts
+  - RX completion is set immediately after the expected byte count is received
 
-Important UART lesson:
+Important USART lesson:
 
 ```text
 GPIO alternate mode is not enough.
 The GPIO AFR register must select the peripheral function, such as AF7 for USART2 PA2/PA3.
 ```
 
-Current UART limitation:
+Current USART limitation:
 
 ```text
-UART init is active through scheduler one-shot init, but no TX/RX runtime demo exists yet.
+USART TX interrupt is active through the scheduler 1000 ms runnable.
+USART RX is drafted and has started working better through the scheduler/interrupt test path.
+TX/RX now use a clearer start/status/read-or-complete concept, similar to a small asynchronous state machine.
+Current scheduler USART usage is now a basic UsartIf TX/RX test on top of MCAL USART.
 Baud calculation currently assumes the USART peripheral clock equals the simple system clock.
 Later USART2 should use PCLK1, while USART1/USART6 should use PCLK2.
 ```
@@ -617,7 +653,25 @@ Completed/mostly completed:
 - Cyclic scheduler draft exists under `src/bsw/services`
 - Scheduler config table exists under `src/bsw/cfg/scheduler_cfg.rs`
 - Scheduler runtime tick state is sized from the scheduler config table length
-- UART register and MCAL init draft exists for USART2 polling
+- USART register and MCAL init draft exists for USART2 polling
+- USART MCAL TX polling path is working
+- USART MCAL TX interrupt path is working
+- USART MCAL RX scheduler/interrupt draft is connected and has improved in hardware testing
+- USART MCAL async APIs now expose explicit TX/RX status concepts
+- USART TX/RX async state cleanup is mostly complete for the current basic test level
+- UsartIf TX draft exists on top of MCAL USART:
+  - `usartif_transmit()` accepts `PduIdType` and `PduInfoType`
+  - UsartIf TX config maps TxPduId 0 to `USART2`
+  - scheduler 1000 ms runnable now transmits through UsartIf instead of directly calling MCAL TX
+  - UsartIf TX confirmation table exists
+- MCAL USART TC interrupt now calls UsartIf TX confirmation by channel.
+- UsartIf RX draft exists on top of MCAL USART:
+  - scheduler 5 ms runnable uses a static RX test buffer
+  - UsartIf saves the upper RX buffer pointer/length before starting MCAL async RX
+  - MCAL USART RX complete interrupt calls UsartIf RX indication by channel
+  - UsartIf copies MCAL RX buffer into the saved upper buffer
+- MCAL USART detects `FE` and `ORE`, clears hardware error flags, and exposes an error state.
+- USART fixed-length RX testing documented the line-ending lesson: terminal payload length must include `\n` or `\r\n` when enabled.
 - Port config supports alternate-function selection for PA2/PA3 USART2 AF7
 - `main.rs` now runs the app through `scheduler_mainfunction()` instead of directly executing the LED/button demo
 - `main.rs` now initializes Mcu through `mcu_init()` instead of calling HSI enable directly
@@ -637,6 +691,8 @@ Reset -> main init -> scheduler_init -> scheduler_oneshot_task -> scheduler_main
 PA0 EXTI interrupt -> IoHwAb button -> IoIf RX PDU 0x100 -> scheduler 1 ms runnable -> app LED pattern
 Scheduler 10 ms runnable -> comm_mainfunction()
 Scheduler 500 ms runnable -> LED toggle demo
+Scheduler 1000 ms runnable -> UsartIf TX PDU 0 -> USART2 TX interrupt demo
+Scheduler 5 ms runnable -> UsartIf RX fixed-length command draft
 Normal LED writes -> IoIf TX PDU 0x200..0x203
 Grouped LED writes -> IoIf TX group PDU 0x300..0x301
 ```
@@ -645,13 +701,13 @@ Scaffolded or drafted but not yet active in the main flow:
 
 - `src/app`
 - `src/rte`
-- UART TX/RX runtime demo from scheduler/app
-- MCAL placeholders for ADC/CAN/GPT/PWM/SPI/UART/WDG
+- UsartIf queue/buffer refinement and future PduR connection
+- MCAL placeholders for ADC/CAN/GPT/PWM/SPI/USART/WDG
 
 Next recommended work:
 
-1. Hardware-test USART2 TX with a polling write path.
-2. Add MCAL UART write-byte/write-string wrapper APIs.
-3. Add MCU PCLK1/PCLK2 helpers before supporting USART1/USART6 baud rate robustly.
-4. Decide whether 1 ms LED pattern logic and 500 ms LED toggle should control the same LEDs or be separated.
-5. Continue toward UartIf after MCAL UART TX/RX polling is stable.
+1. Keep direct TX writes as test-only while async TX owns production USART transmission.
+2. Add MCU PCLK1/PCLK2 helpers before supporting USART1/USART6 baud rate robustly.
+3. Decide whether 1 ms LED pattern logic and 500 ms LED toggle should control the same LEDs or be separated.
+4. Refine UsartIf RX naming so StartOfReception and RxIndication responsibilities are clearer.
+5. Decide the next USART RX strategy: fixed-length only, delimiter-based frame, or ring buffer.

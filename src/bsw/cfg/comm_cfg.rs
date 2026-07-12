@@ -9,7 +9,7 @@ use crate ::bsw::management::comm::comm_type::{ComM_NetWorkHandleType};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ComMUser{
     APP_GPIO,
-    DIAG_UART,
+    DIAG_USART,
     MANAGEMENT_CAN,
     APP_SPI,
 }
@@ -26,8 +26,8 @@ const COMM_NETWORK_HANDLE_CONFIG: &[ComM_NetWorkHandleConfig] =
         user: ComMUser::APP_GPIO,
     },
     ComM_NetWorkHandleConfig {
-        network_handle: ComM_NetWorkHandleType::UART,
-        user: ComMUser::DIAG_UART,
+        network_handle: ComM_NetWorkHandleType::USART,
+        user: ComMUser::DIAG_USART,
     },
     ComM_NetWorkHandleConfig {
         network_handle: ComM_NetWorkHandleType::CAN,

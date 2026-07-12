@@ -36,7 +36,7 @@ MCAL                         active
     +-- Port
     +-- Dio
     +-- Exti
-    +-- Uart                draft polling init/write/read path
+    +-- Usart               draft polling init/write/read path
     +-- SysTick             active as 1 ms system tick source
     +-- Nvic
     |
@@ -152,8 +152,8 @@ Current demo hardware mapping:
 | Orange LED | PD13 | IoIf TX -> IoHwAb LED -> Dio -> GPIO |
 | Red LED | PD14 | IoIf TX -> IoHwAb LED -> Dio -> GPIO |
 | Blue LED | PD15 | IoIf TX -> IoHwAb LED -> Dio -> GPIO |
-| USART2 TX | PA2 | Port AF7 -> MCAL Uart -> USART2 |
-| USART2 RX | PA3 | Port AF7 -> MCAL Uart -> USART2 |
+| USART2 TX | PA2 | Port AF7 -> MCAL Usart -> USART2 |
+| USART2 RX | PA3 | Port AF7 -> MCAL Usart -> USART2 |
 
 ## Current Build Status
 
@@ -295,7 +295,7 @@ cortex_m::asm::isb()
 ```
 
 GPIO/RCC/EXTI/NVIC access is defined from the STM32F411 Reference Manual.
-USART access is also being added manually for the first UART draft.
+USART access is also being added manually for the first USART draft.
 
 ## Future Direction
 
@@ -321,7 +321,10 @@ SysTick-driven cyclic scheduler
 RTE/App runnable split
     |
     v
-UART as Virtual Bus
+USART as Virtual Bus
+    |
+    v
+UsartIf logical PDU wrapper
     |
     v
 PduR / Com
@@ -330,4 +333,25 @@ PduR / Com
 CAN later
 ```
 
-UART can be used as a virtual transport to simulate PDU flow before real CAN is implemented.
+USART can be used as a virtual transport to simulate PDU flow before real CAN is implemented.
+
+Current USART TX direction:
+
+```text
+Scheduler/App draft -> UsartIf TxPduId -> MCAL USART2 async TX -> USART2 IRQ
+```
+
+Current TX confirmation path:
+
+```text
+USART2 TC interrupt -> MCAL USART -> UsartIf TxConfirmation
+```
+
+Current USART RX direction:
+
+```text
+Scheduler/App draft -> UsartIf saves RX buffer -> MCAL USART2 async RX -> USART2 IRQ
+USART2 RX complete interrupt -> MCAL USART -> UsartIf RxIndication -> saved upper buffer
+```
+
+USART is currently treated as a fixed-length byte stream for testing. A later transport/protocol layer can add delimiters, length fields, CRC, queues, or routing through PduR.

@@ -15,7 +15,6 @@ use crate::bsw::{
 use crate::bsw::services::scheduler::{scheduler_oneshot_task, scheduler_mainfunction, scheduler_init};
 use crate::mcal::mcu::{mcu_init, mcu_init_systick_1ms, };
 
-
 pub fn main() -> ! {
     // Khởi tạo các module MCAL
     mcu_init();
@@ -25,6 +24,7 @@ pub fn main() -> ! {
     scheduler_init();
     scheduler_oneshot_task();
     comm_requestcommode(ComMUser::APP_GPIO, ComMRequestedMode::FULL_COMMUNICATION);
+    //let mut count: u32 = 0;
     loop {
         scheduler_mainfunction();
     }

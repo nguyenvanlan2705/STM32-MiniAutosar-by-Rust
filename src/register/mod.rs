@@ -12,8 +12,8 @@ pub mod exti_type;
 pub mod nvic_type;
 #[path = "type/systick_type.rs"]
 pub mod systick_type;
-#[path = "type/uart_type.rs"]
-pub mod uart_type;
+#[path = "type/usart_type.rs"]
+pub mod usart_type;
 #[path = "src/systick.rs"]
 pub mod systick;
 #[path = "src/gpio.rs"]
@@ -28,7 +28,7 @@ pub mod exti;
 pub mod nvic;
 #[path = "src/clock.rs"]
 pub mod clock;
-#[path = "src/uart.rs"]
-pub mod uart;
+#[path = "src/usart.rs"]
+pub mod usart;
 #[path = "cfg/common.rs"]
 pub mod common;

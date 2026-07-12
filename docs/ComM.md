@@ -4,7 +4,7 @@
 
 ComM is the Communication Manager layer.
 
-In this project stage, ComM does not send PDUs and does not call CanIf/UartIf yet. Its current job is to model a small AUTOSAR-like communication mode manager:
+In this project stage, ComM does not send PDUs and does not call CanIf/UsartIf yet. Its current job is to model a small AUTOSAR-like communication mode manager:
 
 ```text
 User request
@@ -67,7 +67,7 @@ Current configured users:
 
 ```text
 APP_GPIO        -> GPIO
-DIAG_UART       -> UART
+DIAG_USART      -> USART
 MANAGEMENT_CAN  -> CAN
 ```
 
@@ -151,7 +151,7 @@ comm_getcurrentcommode()
     reports current mode
 ```
 
-This separation matters because later ComM may need to wait for lower layers such as CanSM, UartSM, Nm, or bus wakeup/sleep logic.
+This separation matters because later ComM may need to wait for lower layers such as CanSM, UsartSM, Nm, or bus wakeup/sleep logic.
 
 ## Current Limitations
 
@@ -162,7 +162,7 @@ This separation matters because later ComM may need to wait for lower layers suc
 
 ## Recommended Next Step
 
-Keep ComM minimal and refine the internal state machine only when a lower layer such as UartSM/CanSM/Nm exists:
+Keep ComM minimal and refine the internal state machine only when a lower layer such as UsartSM/CanSM/Nm exists:
 
 ```text
 requested_mode

@@ -354,7 +354,7 @@ Current LED group PDU IDs:
 
 ## 12. Activate ComM Minimal Flow
 
-Current ComM is a mode manager draft. It does not start real CAN/UART communication yet.
+Current ComM is a mode manager draft. It does not start real CAN/USART communication yet.
 
 ```text
 1. Define a generated-style ComM user in comm_cfg.rs
@@ -460,9 +460,10 @@ Current runnable periods:
 
 ```text
 1 ms    button/LED app logic when GPIO is FULL_COMMUNICATION
+5 ms    USART RX command draft when GPIO is FULL_COMMUNICATION
 10 ms   comm_mainfunction()
-100 ms  reserved
 500 ms  LED toggle demo when GPIO is FULL_COMMUNICATION
+1000 ms USART TX interrupt demo when GPIO is FULL_COMMUNICATION
 ```
 
 Important:
@@ -473,9 +474,9 @@ ComM decides whether GPIO app logic is allowed to run.
 SysTick only provides time.
 ```
 
-## 15. Activate USART2 Polling Draft
+## 15. Activate USART2 Draft
 
-Current UART draft targets USART2:
+Current USART draft targets USART2:
 
 ```text
 PA2 -> USART2_TX -> AF7
@@ -512,6 +513,18 @@ Activation flow:
 8. For polling RX
    wait until USART_SR.RXNE = 1
    read byte from USART_DR
+
+9. For interrupt TX
+   enable NVIC USART2 IRQ
+   copy data into MCAL TX buffer
+   enable USART_CR1.TXEIE
+   write the next byte from USART2_IRQHandler
+
+10. For interrupt RX draft
+    enable NVIC USART2 IRQ
+    prepare MCAL RX buffer/length/index state
+    enable USART_CR1.RXNEIE
+    read USART_DR from USART2_IRQHandler when RXNE is set
 ```
 
 Important:
@@ -519,4 +532,66 @@ Important:
 ```text
 Alternate mode alone is not enough.
 The GPIO AFR register must also select AF7 for PA2/PA3.
+```
+
+Current MCAL TX interrupt flow:
+
+```text
+scheduler_runnable_1000ms()
+    |
+    v
+UsartIf usartif_transmit()
+    |
+    v
+validate length, copy bytes into static TX buffer, mark TX busy, enable TXEIE
+    |
+    v
+USART2_IRQHandler -> usart_irq_handler()
+    |
+    v
+write next byte when TXE is set
+    |
+    v
+TC interrupt -> MCAL calls UsartIf TxConfirmation by channel
+```
+
+Current UsartIf/MCAL RX draft flow:
+
+```text
+scheduler_runnable_5ms()
+    |
+    v
+UsartIf saves a static upper RX buffer pointer and length
+    |
+    v
+mcal::usart::usart_start_receive_async()
+    |
+    v
+prepare fixed-length RX request and enable RXNEIE
+    |
+    v
+USART2_IRQHandler -> usart_irq_handler()
+    |
+    v
+read byte from USART_DR when RXNE is set
+    |
+    v
+expected length reached
+    |
+    v
+MCAL calls UsartIf RxIndication by channel
+    |
+    v
+UsartIf copies MCAL RX buffer into saved upper buffer
+```
+
+Current status:
+
+```text
+USART2 TX through MCAL polling path is working.
+USART2 TX through MCAL interrupt path is working.
+USART2 RX with scheduler/interrupt has started working better in hardware testing.
+TX/RX now use a clearer start/status/read-or-complete concept.
+Current scheduler USART usage now goes through the UsartIf TX/RX draft for the basic test path.
+USART RX fixed-length testing must match terminal line endings. For example, `111\n` is 4 bytes and `111\r\n` is 5 bytes. If the configured length is shorter than the actual sent bytes, extra bytes can cause `ORE`.
 ```

@@ -12,7 +12,8 @@
 use crate::register::syscfg_type::EXTILINE;
 use crate::mcal::mcu::systick_1ms_handler;
 use crate::mcal::interrupcallback::{exti_irq_handler, exti_group_irq_handler};
-
+use crate::mcal::usart::{usart_irq_handler};
+use crate::register::usart_type::{UsartNumber};
 /// Một phần tử trong bảng vector: hoặc là con trỏ hàm handler,
 /// hoặc là ô "reserved" (giá trị 0).
 #[repr(C)]
@@ -138,6 +139,13 @@ pub extern "C" fn DefaultHandler() {
         cortex_m::asm::nop();
     }
 }
+/*USARTx Interrupt Handlers */
+#[unsafe(no_mangle)]
+pub extern "C" fn USART2_IRQHandler() {
+    // Handle USART2 interrupt
+    usart_irq_handler(UsartNumber::USART2);
+}
+/*EXTIx Interrupt Handlers */
 #[unsafe(no_mangle)]
 pub extern "C" fn EXTI0_IRQHandler() {
     exti_irq_handler(EXTILINE::LINE0);
@@ -252,7 +260,7 @@ pub static __INTERRUPTS: [Vector; 86] = [
     Vector { handler: DefaultHandler },          // 35 SPI1
     Vector { handler: DefaultHandler },          // 36 SPI2
     Vector { handler: DefaultHandler },          // 37 USART1
-    Vector { handler: DefaultHandler },          // 38 USART2
+    Vector { handler: USART2_IRQHandler },       // 38 USART2
     Vector { reserved: 0 },                      // 39 Reserved
     Vector { handler: EXTI15_10_IRQHandler },    // 40 EXTI15_10
     Vector { handler: DefaultHandler },          // 41 RTC_Alarm

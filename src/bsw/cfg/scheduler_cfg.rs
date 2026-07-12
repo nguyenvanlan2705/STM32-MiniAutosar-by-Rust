@@ -4,7 +4,7 @@
 
 use crate::bsw::services::scheduler_type::{SchedulerRunnableConfig, SchedulerRunnableType, SchedulerTasksTable};
 use crate::bsw::services::scheduler::{scheduler_runnable_10ms,
-     scheduler_runnable_100ms, scheduler_runnable_1ms, scheduler_runnable_500ms};
+     scheduler_runnable_1000ms, scheduler_runnable_1ms, scheduler_runnable_5ms, scheduler_runnable_500ms};
 use core::sync::atomic::AtomicU32;
 
 
@@ -17,13 +17,18 @@ pub const SCHEDULER_TASKS_TABLE: SchedulerTasksTable = SchedulerTasksTable {
     },
     SchedulerRunnableConfig {
         task_type: SchedulerRunnableType::Periodic,
+        period_ms: 5, // 5 ms periodic task
+        task_fn: scheduler_runnable_5ms,
+    },
+    SchedulerRunnableConfig {
+        task_type: SchedulerRunnableType::Periodic,
         period_ms: 10, // 10 ms periodic task
         task_fn: scheduler_runnable_10ms,
     },
     SchedulerRunnableConfig {
         task_type: SchedulerRunnableType::Periodic,
-        period_ms: 100, // 100 ms periodic task
-        task_fn: scheduler_runnable_100ms,
+        period_ms: 1000, // 1000 ms periodic task
+        task_fn: scheduler_runnable_1000ms ,
     },
     SchedulerRunnableConfig {
         task_type: SchedulerRunnableType::Periodic,
