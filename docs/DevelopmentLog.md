@@ -616,6 +616,179 @@ Baud calculation currently assumes the USART peripheral clock equals the simple 
 Later USART2 should use PCLK1, while USART1/USART6 should use PCLK2.
 ```
 
+## Phase 19 - ADC and IoHwAb Sensor Draft
+
+Started the first analog input direction using ADC1:
+
+- Added ADC register layer for ADC1.
+- Added MCAL ADC config under `src/mcal/cfg/adc_cfg.rs`.
+- Added MCAL ADC type definitions under `src/mcal/type/adc_type.rs`.
+- Added MCAL ADC implementation under `src/mcal/src/adc.rs`.
+- Corrected ADC1 base address to `0x4001_2000`.
+- Configured PB0 as analog input for `ADC_CHANNEL_8`.
+- Added ADC channel config:
+  - channel: `ADC_CHANNEL_8`
+  - mode: single conversion
+  - sample time: 84 cycles
+  - resolution: 12-bit
+  - alignment: right
+  - method: polling
+- Added IoHwAb Sensor draft:
+  - `src/bsw/iohwab/sensor.rs`
+  - `src/bsw/cfg/iohwab_sensor_cfg.rs`
+  - `SensorType::LM35`
+- Added IoIf RX PDU for LM35:
+  - PDU ID: `0x101`
+  - peripheral: `ADC`
+  - channel: `SENSOR_LM35`
+  - mode: `POLLING`
+- Added temperature application draft:
+  - `src/app/temperature_app.rs`
+- Scheduler now calls `iohwab_sensor_mainfunction()` from the 10 ms runnable.
+- The 1 ms runnable reads the latest sensor value through IoIf and converts raw ADC data to a temperature estimate.
+
+Important ADC lesson:
+
+```text
+ADC channel number is not always the same as GPIO pin number.
+ADC_CHANNEL_8 maps to PB0 on STM32F411, not PA8.
+```
+
+Important scheduler lesson:
+
+```text
+Do not block inside scheduler runnables waiting for ADC EOC.
+Start conversion and poll completion as separate state-machine steps.
+```
+
+Current ADC sensor state flow:
+
+```text
+SENSOR_IDLE
+    -> start ADC conversion
+    -> SENSOR_CONVERTING
+
+SENSOR_CONVERTING
+    -> check EOC once
+    -> if not complete, return and keep CONVERTING
+    -> if complete, read DR and save cached value
+    -> SENSOR_COMPLETE
+
+SENSOR_COMPLETE
+    -> IoIf/App reads latest cached value
+    -> SENSOR_IDLE
+```
+
+Hardware validation checkpoint:
+
+```text
+PB0 connected to GND   -> raw near 0
+PB0 connected to 3.3 V -> raw near 4095
+```
+
+This indicates the ADC driver, ADC1 base address, and channel/pin mapping are basically correct.
+
+LM35 validation remains pending until the sensor module and wiring can be checked with a multimeter or a replacement module.
+
+## Phase 20 - SPI Register/MCAL Loopback Draft
+
+Started the first SPI direction using SPI1 and SPI2 on the same STM32F411 Discovery board:
+
+- Added SPI register/type/config/MCAL draft files.
+- Configured SPI1 as polling master.
+- Configured SPI2 as polling slave.
+- Added SPI1 pin config:
+  - PA4: software NSS GPIO placeholder
+  - PA5: SPI1_SCK AF5
+  - PA6: SPI1_MISO AF5
+  - PA7: SPI1_MOSI AF5
+- Added SPI2 pin config:
+  - PA12: software NSS GPIO placeholder
+  - PB13: SPI2_SCK AF5
+  - PB14: SPI2_MISO AF5
+  - PB15: SPI2_MOSI AF5
+- Hardware loopback wiring is:
+  - PA5 -> PB13
+  - PA7 -> PB15
+  - PA6 <- PB14
+- Added master/slave-oriented MCAL APIs:
+  - `spi_master_transfer_byte()`
+  - `spi_slave_preload_byte()`
+  - `spi_slave_ready_to_receive()`
+  - `spi_slave_receive_byte()`
+- `spi_slave_ready_to_receive()` now checks RXNE instead of using BSY as a read-ready condition.
+- Added `Dio_ChannelType::OnboardSpiSensorCs` mapped to PE3.
+- `spi_init()` now forces PE3 HIGH before configuring SPI channels so the onboard SPI sensor does not drive SPI1 MISO.
+
+Important SPI lesson:
+
+SPI MISO stability depends on the whole bus, not only the selected test wires.
+On STM32F411 Discovery, the onboard SPI sensor shares SPI1 pins.
+After a full power cycle, PE3 must be driven HIGH to keep that sensor deselected before SPI1 loopback testing.
+
+Current SPI status:
+
+```text
+SPI1 master polling transfer is hardware-tested.
+SPI2 slave polling preload/receive is hardware-tested.
+Logic analyzer can observe SPI clock/data after wiring and mode settings are corrected.
+Power-cycle MISO instability is resolved by moving PE3 deselect handling into spi_init().
+```
+
+## Phase 21 - MCP2515 Bring-Up over SPI
+
+Started MCP2515 external CAN controller bring-up on top of the current MCAL SPI byte-level helper.
+
+Added/drafted:
+
+- `src/mcal/external/mcp2515_type.rs`
+- `src/mcal/external/mcp2515.rs`
+- `src/mcal/cfg/mcp2515_cfg.rs`
+- MCP2515 config maps:
+  - device id: `MCP2515_1`
+  - SPI channel: `SPI1`
+  - CS channel: `Dio_ChannelType::Mcp2515Cs`
+  - optional INT channel: `Dio_ChannelType::mcp2515Int`
+  - oscillator: 8 MHz
+  - CAN baudrate: 500 kbps
+- Basic MCP2515 commands:
+  - reset
+  - read register
+  - write register
+  - bit modify
+  - read quick status
+  - set mode
+  - write CNF1/CNF2/CNF3 for baudrate
+
+Important MCP2515 validation notes:
+
+```text
+READ_STATUS instruction 0xA0 returns quick RX/TX buffer flags.
+It does not return the CANSTAT register.
+```
+
+To check MCP2515 mode:
+
+```text
+Read CANCTRL register 0x0F, then mask with 0xE0.
+Read CANSTAT register 0x0E, then mask with 0xE0.
+```
+
+Current init ends with:
+
+```text
+mcp2515_set_mode(..., NORMAL)
+```
+
+Therefore reading `CANCTRL = 0x07` after init is acceptable because:
+
+```text
+0x07 & 0xE0 = 0x00 -> NORMAL mode bits
+```
+
+The current SPI/MCP2515 path is still a bring-up path, not a full AUTOSAR SPI Channel/Job/Sequence implementation.
+The byte-level SPI helper is intentionally kept for hardware validation before refactoring SPI toward AUTOSAR concepts.
+
 ## Current Status
 
 Completed/mostly completed:
@@ -656,7 +829,7 @@ Completed/mostly completed:
 - USART register and MCAL init draft exists for USART2 polling
 - USART MCAL TX polling path is working
 - USART MCAL TX interrupt path is working
-- USART MCAL RX scheduler/interrupt draft is connected and has improved in hardware testing
+- USART MCAL RX scheduler/interrupt draft is connected and working in hardware testing with the current ring-buffer test flow
 - USART MCAL async APIs now expose explicit TX/RX status concepts
 - USART TX/RX async state cleanup is mostly complete for the current basic test level
 - UsartIf TX draft exists on top of MCAL USART:
@@ -667,11 +840,32 @@ Completed/mostly completed:
 - MCAL USART TC interrupt now calls UsartIf TX confirmation by channel.
 - UsartIf RX draft exists on top of MCAL USART:
   - scheduler 5 ms runnable uses a static RX test buffer
-  - UsartIf saves the upper RX buffer pointer/length before starting MCAL async RX
-  - MCAL USART RX complete interrupt calls UsartIf RX indication by channel
-  - UsartIf copies MCAL RX buffer into the saved upper buffer
+  - UsartIf `StartOfReception` saves the upper RX buffer pointer/length and resets the RX write index
+  - MCAL USART RX interrupt reads `DR` on `RXNE` and pushes bytes into a per-channel RX ring buffer
+  - scheduler 5 ms runnable calls UsartIf RX processing so it can pop ring-buffer bytes into the saved upper buffer
+  - UsartIf validates a simple delimiter-based frame on CR/LF
+  - When CRC is enabled, the current test frame format is `payload + two ASCII hex CRC8 characters + CR/LF`, for example `111F1\n`
+  - UsartIf removes the CRC characters from the upper buffer after successful validation and marks RX completed
+  - UsartIf marks RX error for too-short frames, CRC mismatch, timeout, or buffer full before delimiter
 - MCAL USART detects `FE` and `ORE`, clears hardware error flags, and exposes an error state.
-- USART fixed-length RX testing documented the line-ending lesson: terminal payload length must include `\n` or `\r\n` when enabled.
+- USART RX moved from the earlier fixed-length interrupt-complete model toward a ring-buffer stream model, reducing overrun risk during terminal testing.
+- ADC register and MCAL draft exists for ADC1.
+- ADC1 channel 8 is configured through MCAL config and PB0 is configured as analog input through Port config.
+- ADC basic hardware sanity checks passed:
+  - PB0 tied to GND gives raw value near 0
+  - PB0 tied to 3.3 V gives raw value near full scale
+- IoHwAb Sensor draft exists for LM35 over ADC channel 8.
+- IoHwAb Sensor uses a non-blocking state machine:
+  - `SENSOR_IDLE`
+  - `SENSOR_CONVERTING`
+  - `SENSOR_COMPLETE`
+  - `SENSOR_ERROR`
+- IoIf RX PDU `0x101` routes ADC sensor latest-value reads to IoHwAb Sensor.
+- Temperature app draft reads ADC raw data through IoIf and converts it using `raw * 3.3 / 4095.0 * 100.0`.
+- SPI register/MCAL polling draft exists for SPI1 master and SPI2 slave loopback testing.
+- SPI loopback is stable after forcing the onboard SPI sensor CS `PE3` high from `spi_init()`.
+- MCP2515 external CAN controller bring-up exists under MCAL external and currently uses SPI1 byte-level polling helpers.
+- MCP2515 can be reset, configured for 500 kbps with an 8 MHz oscillator, switched to NORMAL mode, and read through SPI register commands.
 - Port config supports alternate-function selection for PA2/PA3 USART2 AF7
 - `main.rs` now runs the app through `scheduler_mainfunction()` instead of directly executing the LED/button demo
 - `main.rs` now initializes Mcu through `mcu_init()` instead of calling HSI enable directly
@@ -690,9 +884,13 @@ Current main flow:
 Reset -> main init -> scheduler_init -> scheduler_oneshot_task -> scheduler_mainfunction loop
 PA0 EXTI interrupt -> IoHwAb button -> IoIf RX PDU 0x100 -> scheduler 1 ms runnable -> app LED pattern
 Scheduler 10 ms runnable -> comm_mainfunction()
+Scheduler 10 ms runnable -> IoHwAb Sensor mainfunction for ADC/LM35 draft
 Scheduler 500 ms runnable -> LED toggle demo
 Scheduler 1000 ms runnable -> UsartIf TX PDU 0 -> USART2 TX interrupt demo
-Scheduler 5 ms runnable -> UsartIf RX fixed-length command draft
+Scheduler 5 ms runnable -> UsartIf RX StartOfReception + RX processing over MCAL USART RX ring buffer + CRC frame validation
+Temperature app -> IoIf RX PDU 0x101 -> IoHwAb Sensor latest cached ADC value
+SPI test loop -> SPI2 preload 0xAA -> SPI1 transfers 0x55 -> SPI1 receives MISO, SPI2 receives MOSI
+MCP2515 init -> SPI1 byte-level commands -> MCP2515 reset/CNF/mode/read-status/register read
 Normal LED writes -> IoIf TX PDU 0x200..0x203
 Grouped LED writes -> IoIf TX group PDU 0x300..0x301
 ```
@@ -702,12 +900,21 @@ Scaffolded or drafted but not yet active in the main flow:
 - `src/app`
 - `src/rte`
 - UsartIf queue/buffer refinement and future PduR connection
-- MCAL placeholders for ADC/CAN/GPT/PWM/SPI/USART/WDG
+- MCAL placeholders for CAN/GPT/PWM/WDG
+- SPI is now active as a direct MCAL polling loopback draft; full AUTOSAR SPI Channel/Job/Sequence support is not implemented yet.
+- MCP2515 is started as an MCAL external component, but CAN frame transmit/receive APIs are not implemented yet.
+- LM35 hardware validation is pending stable sensor hardware or multimeter confirmation
 
 Next recommended work:
 
 1. Keep direct TX writes as test-only while async TX owns production USART transmission.
 2. Add MCU PCLK1/PCLK2 helpers before supporting USART1/USART6 baud rate robustly.
 3. Decide whether 1 ms LED pattern logic and 500 ms LED toggle should control the same LEDs or be separated.
-4. Refine UsartIf RX naming so StartOfReception and RxIndication responsibilities are clearer.
-5. Decide the next USART RX strategy: fixed-length only, delimiter-based frame, or ring buffer.
+4. Refine UsartIf RX naming so StartOfReception, RX processing, and future RxIndication responsibilities are clearer.
+5. Refine USART RX framing beyond the current delimiter + CRC8 text test, for example SOF, length field, escape handling, or future PduR routing.
+6. Rename old blocking ADC helpers to make them clearly test-only, or remove them after the non-blocking ADC sensor path is stable.
+7. Add an ADC ownership rule before configuring multiple ADC sensors.
+8. Add a normal MCP2515 CANSTAT register read helper; do not confuse it with READ_STATUS quick status.
+9. Add a small MCP2515 post-reset delay before CNF writes.
+10. Keep current SPI byte helpers for bring-up, but plan the AUTOSAR-style SPI refactor around Channel, Job, and Sequence.
+11. Decide the next MCP2515 milestone: loopback CAN frame transmit first, then RX buffer/interrupt handling.

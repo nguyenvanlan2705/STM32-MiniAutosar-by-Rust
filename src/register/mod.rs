@@ -14,8 +14,13 @@ pub mod nvic_type;
 pub mod systick_type;
 #[path = "type/usart_type.rs"]
 pub mod usart_type;
+#[path = "type/adc_type.rs"]
+pub mod adc_type;
+
+#[path = "type/spi_type.rs"]
+pub mod spi_type;
 #[path = "src/systick.rs"]
-pub mod systick;
+    pub mod systick;
 #[path = "src/gpio.rs"]
 pub mod gpio;
 #[path = "src/dio.rs"]
@@ -30,5 +35,10 @@ pub mod nvic;
 pub mod clock;
 #[path = "src/usart.rs"]
 pub mod usart;
+#[path = "src/adc.rs"]
+pub mod adc;
+#[path = "src/spi.rs"]
+pub mod spi;
 #[path = "cfg/common.rs"]
 pub mod common;
+

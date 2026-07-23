@@ -28,8 +28,20 @@ The current Port configuration initializes:
 | PA0 | User button | Input | Pulldown |
 | PA2 | USART2 TX | Alternate AF7 | None |
 | PA3 | USART2 RX | Alternate AF7 | None |
+| PB0 | ADC1_IN8 / LM35 draft | Analog | None |
+| PE3 | Onboard SPI sensor CS | Output | None |
+| PA4 | SPI1 software NSS placeholder | Output | None |
+| PA5 | SPI1 SCK | Alternate AF5 | None |
+| PA6 | SPI1 MISO | Alternate AF5 | None |
+| PA7 | SPI1 MOSI | Alternate AF5 | None |
+| PA12 | SPI2 software NSS placeholder | Output | None |
+| PB13 | SPI2 SCK | Alternate AF5 | None |
+| PB14 | SPI2 MISO | Alternate AF5 | None |
+| PB15 | SPI2 MOSI | Alternate AF5 | None |
 
 The configuration currently lives in `src/mcal/cfg/port_cfg.rs`.
+
+`PE3` is board-specific for STM32F411 Discovery. It is kept high by `spi_init()` so the onboard SPI sensor does not drive SPI1 MISO during loopback tests.
 
 Port configuration is read-only runtime data. Keep it as `const` configuration, not mutable global state. For broader global/static datatype rules, see `docs/GlobalData.md`.
 
@@ -124,6 +136,15 @@ pub const PORT_CONFIG: PortConfig = PortConfig {
             pull: PULL::NONE,
             alternate_function: Dio_AlternateFunctionType::AF7,
         },
+        PortPinConfig {
+            port: PORT::B,
+            pin: PIN::P0,
+            mode: MODE::ANALOG,
+            output_type: OUTPUTTYPE::PUSHPULL,
+            output_speed: OUTPUTSPEED::VERYHIGH,
+            pull: PULL::NONE,
+            alternate_function: Dio_AlternateFunctionType::NONE,
+        },
     ],
 };
 ```
@@ -199,6 +220,16 @@ RCC_AHB1ENR.GPIOAEN = 1
 GPIOA_MODER[5:4]    = 10 alternate function
 GPIOA_AFRL[11:8]    = 0111 AF7
 ```
+
+Example: configure PB0 as ADC1_IN8 analog input.
+
+```text
+RCC_AHB1ENR.GPIOBEN = 1
+GPIOB_MODER[1:0]    = 11 analog
+GPIOB_PUPDR[1:0]    = 00 no pull
+```
+
+After this, MCAL ADC can sample ADC channel 8.
 
 ## Important Lessons
 
@@ -280,3 +311,13 @@ You must also select the correct alternate function:
 PA2 USART2_TX -> AF7
 PA3 USART2_RX -> AF7
 ```
+
+### 6. Confusing ADC channel number with GPIO pin number
+
+For the current ADC draft:
+
+```text
+ADC_CHANNEL_8 -> PB0
+```
+
+It is not PA8. The GPIO pin must be configured as analog for the real ADC input pin.

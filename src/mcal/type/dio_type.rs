@@ -19,6 +19,9 @@ pub enum Dio_ChannelType {
     UserButton,
     Relay,
     FanEnable,
+    OnboardSpiSensorCs,
+    Mcp2515Cs,
+    mcp2515Int,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]    
 pub struct Dio_ChannelGroupType{

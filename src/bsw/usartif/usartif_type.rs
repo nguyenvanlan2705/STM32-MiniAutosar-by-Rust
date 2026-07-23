@@ -58,6 +58,8 @@ pub struct UsartIf_RxPduType{
     pub rx_pdu_length: u8,
     pub lower_channel: UsartNumber,
     pub upper_id : PduIdType, 
+    pub rx_timeout: u32,
+    pub crc : bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

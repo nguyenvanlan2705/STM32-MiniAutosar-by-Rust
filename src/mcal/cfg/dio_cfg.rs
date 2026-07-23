@@ -30,6 +30,21 @@ pub const DIO_CHANNEL_CONFIG: Dio_ConfigType = Dio_ConfigType {
             port: PORT::A,
             pin: PIN::P0,
         },
+        Dio_ChannelConfig {
+            channel: Dio_ChannelType::OnboardSpiSensorCs,
+            port: PORT::E,
+            pin: PIN::P3,
+        },
+        Dio_ChannelConfig {
+            channel: Dio_ChannelType::Mcp2515Cs,
+            port: PORT::A,
+            pin: PIN::P4,
+        },
+        Dio_ChannelConfig {
+            channel: Dio_ChannelType::mcp2515Int,
+            port: PORT::A,
+            pin: PIN::P8,
+        },
     ],
 };
 

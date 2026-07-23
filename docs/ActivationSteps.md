@@ -11,6 +11,8 @@ The current demo configures:
 - EXTI group handlers for EXTI9_5 and EXTI15_10 are available.
 - Button notification is handled in IoHwAb and reported upward through IoIf RX indication.
 - Normal LED writes are routed through IoIf TX and confirmed through IoIf TxConfirmation.
+- PB0 is configured as analog input for ADC1 channel 8.
+- LM35 sensor draft is routed through IoHwAb Sensor and IoIf RX PDU `0x101`.
 - Shared IoIf status tables use `AtomicU8`.
 - The EXTI callback table uses `AtomicUsize` because callback addresses are pointer-sized.
 
@@ -459,9 +461,9 @@ Startup flow:
 Current runnable periods:
 
 ```text
-1 ms    button/LED app logic when GPIO is FULL_COMMUNICATION
+1 ms    button/LED app logic and temperature latest-value read
 5 ms    USART RX command draft when GPIO is FULL_COMMUNICATION
-10 ms   comm_mainfunction()
+10 ms   comm_mainfunction() and IoHwAb Sensor mainfunction
 500 ms  LED toggle demo when GPIO is FULL_COMMUNICATION
 1000 ms USART TX interrupt demo when GPIO is FULL_COMMUNICATION
 ```
@@ -561,28 +563,32 @@ Current UsartIf/MCAL RX draft flow:
 scheduler_runnable_5ms()
     |
     v
-UsartIf saves a static upper RX buffer pointer and length
+UsartIf StartOfReception saves a static upper RX buffer pointer and length
     |
     v
 mcal::usart::usart_start_receive_async()
     |
     v
-prepare fixed-length RX request and enable RXNEIE
+enable or reuse the USART RX interrupt stream
     |
     v
 USART2_IRQHandler -> usart_irq_handler()
     |
     v
-read byte from USART_DR when RXNE is set
+read USART_DR when RXNE is set and push the byte into the MCAL RX ring buffer
     |
     v
-expected length reached
+scheduler_runnable_5ms() calls UsartIf RX processing
     |
     v
-MCAL calls UsartIf RxIndication by channel
+UsartIf pops bytes from the MCAL ring buffer into the saved upper buffer
     |
     v
-UsartIf copies MCAL RX buffer into saved upper buffer
+CR/LF reached -> UsartIf validates frame CRC when enabled
+    |
+    v
+valid frame -> UsartIf RX PDU status COMPLETED
+invalid frame / timeout / buffer full -> UsartIf RX PDU status ERROR
 ```
 
 Current status:
@@ -590,8 +596,232 @@ Current status:
 ```text
 USART2 TX through MCAL polling path is working.
 USART2 TX through MCAL interrupt path is working.
-USART2 RX with scheduler/interrupt has started working better in hardware testing.
+USART2 RX with scheduler/interrupt and MCAL ring buffer is working in hardware testing.
 TX/RX now use a clearer start/status/read-or-complete concept.
 Current scheduler USART usage now goes through the UsartIf TX/RX draft for the basic test path.
-USART RX fixed-length testing must match terminal line endings. For example, `111\n` is 4 bytes and `111\r\n` is 5 bytes. If the configured length is shorter than the actual sent bytes, extra bytes can cause `ORE`.
+USART RX now drains `DR` in the ISR and stores bytes in a ring buffer. UsartIf completes the current simple test frame when CR/LF is received and the configured CRC policy passes.
 ```
+
+## 16. Activate ADC1 Single Conversion
+
+Current ADC draft uses PB0 / ADC1_IN8.
+
+Pin and channel mapping:
+
+```text
+PB0 -> ADC_CHANNEL_8
+```
+
+Activation flow:
+
+```text
+1. Configure PB0 through Port config
+   mode = ANALOG
+   pull = NONE
+
+2. Enable ADC1 peripheral clock
+   RCC_APB2ENR.ADC1EN = 1
+
+3. Configure sample time
+   ADC_SMPR2 for channel 8
+
+4. Configure regular sequence
+   ADC_SQR3 first conversion = 8
+
+5. Configure resolution and alignment
+   ADC_CR1.RES
+   ADC_CR2.ALIGN
+
+6. Enable ADC
+   ADC_CR2.ADON = 1
+
+7. Start conversion
+   ADC_CR2.SWSTART = 1
+
+8. Check conversion complete
+   ADC_SR.EOC = 1
+
+9. Read conversion result
+   ADC_DR
+```
+
+Important:
+
+```text
+ADC channel number is not always the same as GPIO pin number.
+ADC_CHANNEL_8 maps to PB0, not PA8.
+```
+
+Current scheduler-safe ADC flow:
+
+```text
+scheduler_runnable_10ms()
+    |
+    v
+iohwab_sensor_mainfunction()
+    |
+    +-- IDLE: start conversion
+    +-- CONVERTING: check EOC once, no wait loop
+    +-- COMPLETE: keep latest raw value
+
+scheduler_runnable_1ms()
+    |
+    v
+temperature_measurement_app_1ms()
+    |
+    v
+ioif_read_rx_value(0x101, &mut raw)
+```
+
+Do not call a blocking wait loop from a scheduler runnable:
+
+```text
+Bad:
+start ADC -> while EOC == 0 -> read DR
+
+Good:
+start ADC -> return
+next scheduler call -> check EOC once -> return or read DR
+```
+
+LM35 raw conversion:
+
+```rust
+temperature_c = raw as f32 * 3.3 / 4095.0 * 100.0;
+```
+
+Use the ADC reference voltage, usually VDDA around 3.3 V, not the LM35 supply voltage.
+
+Hardware sanity checks:
+
+```text
+PB0 connected to GND   -> raw near 0
+PB0 connected to 3.3 V -> raw near 4095
+```
+
+LM35 validation is still hardware-pending. Before trusting LM35 values, check common GND, pinout, and Vout with a multimeter.
+
+## 17. Activate SPI1/SPI2 Loopback Draft
+
+Current SPI draft uses SPI1 as master and SPI2 as slave.
+
+Pin mapping:
+
+```text
+SPI1 master:
+PA4 -> software NSS GPIO placeholder
+PA5 -> SPI1_SCK  AF5
+PA6 -> SPI1_MISO AF5
+PA7 -> SPI1_MOSI AF5
+
+SPI2 slave:
+PA12 -> software NSS GPIO placeholder
+PB13 -> SPI2_SCK  AF5
+PB14 -> SPI2_MISO AF5
+PB15 -> SPI2_MOSI AF5
+```
+
+Loopback wiring:
+
+```text
+PA5  -> PB13
+PA7  -> PB15
+PA6  <- PB14
+GND  -> common GND
+```
+
+Activation flow:
+
+```text
+1. Configure SPI GPIO pins through Port config.
+2. Configure PE3 as GPIO output.
+3. During spi_init(), set PE3 HIGH to deselect the onboard SPI sensor.
+4. Enable SPI1/SPI2 peripheral clocks.
+5. Configure SPI1 as master and SPI2 as slave.
+6. Configure matching CPOL/CPHA, frame size, bit order, and frame mode.
+7. Configure software NSS for the current loopback draft.
+8. Enable SPI peripherals.
+9. Preload SPI2 slave data before SPI1 generates clock.
+10. Call SPI1 master transfer and then read SPI2 received data when RXNE is set.
+```
+
+Important:
+
+```text
+PE3 is not SPI1 hardware NSS.
+PE3 is the onboard SPI sensor chip-select on STM32F411 Discovery.
+Keeping PE3 high prevents the onboard sensor from driving SPI1 MISO.
+```
+
+Current status:
+
+```text
+SPI1 master transfer works.
+SPI2 slave preload/receive works.
+Power-cycle stability improved after moving PE3 HIGH handling into spi_init().
+```
+
+## 18. Activate MCP2515 Bring-Up over SPI
+
+Current MCP2515 support is an MCAL external bring-up layer on top of SPI1.
+
+Required configuration:
+
+```text
+SPI1 master configured and initialized
+MCP2515 CS mapped to Dio_ChannelType::Mcp2515Cs
+MCP2515 INT optionally mapped to Dio_ChannelType::mcp2515Int
+MCP2515 oscillator configured as 8 MHz
+MCP2515 baudrate configured as 500 kbps
+```
+
+Activation flow:
+
+```text
+1. Configure Port pins for SPI1 SCK/MISO/MOSI.
+2. Configure MCP2515 CS as a GPIO output.
+3. Configure MCP2515 INT as a GPIO input if interrupt testing is needed.
+4. Call port_init().
+5. Call spi_init().
+6. Call mcp2515_init().
+7. Verify CANCTRL/CANSTAT mode bits by reading registers over SPI.
+```
+
+Current MCP2515 init flow:
+
+```text
+CS high
+RESET instruction
+write CNF1/CNF2/CNF3
+set mode NORMAL
+```
+
+Important:
+
+```text
+READ_STATUS instruction 0xA0 is only a quick TX/RX buffer status.
+It is not the CANSTAT register.
+```
+
+To verify operation mode:
+
+```text
+Read CANCTRL register 0x0F and mask with 0xE0.
+Read CANSTAT register 0x0E and mask with 0xE0.
+```
+
+Expected mode bits:
+
+```text
+After reset/config mode: 0x80
+After switching to normal mode: 0x00
+```
+
+So `CANCTRL = 0x07` after `mcp2515_init()` is acceptable because:
+
+```text
+0x07 & 0xE0 = 0x00
+```
+
+The current MCP2515 driver uses SPI byte-level helpers directly.
+This is acceptable for bring-up, but later SPI MCAL should be refined toward AUTOSAR Channel, Job, and Sequence concepts.

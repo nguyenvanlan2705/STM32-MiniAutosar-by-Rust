@@ -60,9 +60,9 @@ Each runnable has its own last-run tick entry. This is important because a 1 ms 
 ## Current Runnable Mapping
 
 ```text
-1 ms    button app + LED pattern when GPIO is FULL_COMMUNICATION
+1 ms    button app + LED pattern + temperature app latest-value read
 5 ms    USART RX command draft when GPIO is FULL_COMMUNICATION
-10 ms   comm_mainfunction()
+10 ms   comm_mainfunction() + IoHwAb Sensor mainfunction
 500 ms  LED toggle demo when GPIO is FULL_COMMUNICATION
 1000 ms USART TX interrupt demo when GPIO is FULL_COMMUNICATION
 ```
@@ -112,29 +112,98 @@ scheduler_runnable_5ms()
     |
     v
 if GPIO network is FULL_COMMUNICATION:
+    if RX is not started:
+        pass static RX buffer through PduInfoType
+        call UsartIf StartOfReception
+        mark RX as started when OK
+    if RX is started:
+        if RX data is available:
+            call UsartIf RX processing so it can pop bytes from the MCAL ring buffer
+        call UsartIf RX timeout processing
     check UsartIf RX PDU status
     if COMPLETED:
-        inspect static RX test buffer
+        inspect static RX test buffer payload
         optionally transmit a response through UsartIf TX
         mark RX as not started so the next request can be armed
-    if not started:
-        pass static RX buffer through PduInfoType
-        call UsartIf RX start/indication draft API
+    if ERROR:
+        mark RX as not started so a new request can recover/re-arm
 ```
 
 Keep this runnable non-blocking. A blocking USART read inside a cyclic scheduler would hold the main loop and delay every other runnable.
 
-The RX test buffer must be static because MCAL completes RX later in an interrupt. A local stack buffer inside the 5 ms runnable would no longer be valid after the function returns.
+The RX test buffer must be static because UsartIf keeps its pointer after `scheduler_runnable_5ms()` returns. A local stack buffer inside the 5 ms runnable would no longer be valid after the function returns.
 
-For fixed-length RX testing, the scheduler/config length must match the terminal payload exactly:
+The current RX test is delimiter and CRC based:
 
 ```text
-111      -> length 3
-111\n    -> length 4
-111\r\n  -> length 5
+USART ISR         -> read DR and push byte into MCAL ring buffer
+Scheduler 5 ms    -> call UsartIf RX processing
+UsartIf RX        -> pop ring bytes into the saved upper buffer until CR/LF
+CRC enabled       -> validate payload + ASCII hex CRC
+Completion        -> valid CRC frame
+Error             -> too short, CRC mismatch, timeout, or buffer full before delimiter
 ```
 
-If the terminal sends extra bytes after the configured RX length, those bytes can remain unread and later cause `ORE`.
+The current terminal test frame for payload `111` is:
+
+```text
+111F1\n
+```
+
+After UsartIf validates CRC, it removes the last two CRC characters from the upper buffer. The scheduler test then compares the payload bytes, for example `rx_data[0..3] == b"111"`.
+
+The MCAL ring buffer reduces `ORE` risk because the ISR drains `DR` quickly. The scheduler still needs to call RX processing regularly; otherwise the ring can fill.
+
+## ADC Sensor Runnable
+
+The ADC sensor draft is handled through IoHwAb Sensor from the 10 ms runnable:
+
+```text
+scheduler_runnable_10ms()
+    |
+    +-- comm_mainfunction()
+    |
+    +-- iohwab_sensor_mainfunction()
+```
+
+The sensor mainfunction is a small non-blocking state machine:
+
+```text
+SENSOR_IDLE
+    -> start ADC conversion
+    -> SENSOR_CONVERTING
+
+SENSOR_CONVERTING
+    -> check ADC EOC once
+    -> if not complete, return immediately
+    -> if complete, read ADC_DR and cache the value
+    -> SENSOR_COMPLETE
+
+SENSOR_COMPLETE
+    -> wait for IoIf/App to read latest value
+```
+
+The 1 ms runnable reads the latest cached value through the application path:
+
+```text
+scheduler_runnable_1ms()
+    |
+    v
+temperature_measurement_app_1ms()
+    |
+    v
+ioif_read_rx_value(0x101, &mut raw)
+    |
+    v
+IoHwAb Sensor latest cached ADC value
+```
+
+Important:
+
+```text
+ADC conversion wait loops do not belong inside scheduler runnables.
+The scheduler is cooperative, so a blocking ADC wait delays all other runnables.
+```
 
 ## Toggle Note
 

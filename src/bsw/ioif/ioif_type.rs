@@ -1,6 +1,8 @@
 #![allow(non_snake_case)]
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
+use core::sync::atomic::{AtomicU8};
+use crate::bsw::common_type::PduIdType;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]   
 pub enum IoIf_ReturnType {
@@ -25,6 +27,7 @@ pub enum IoIf_TxChannelGroupType{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)] 
 pub enum IoIf_RxChannelType {
     BUTTON_USER,
+    SENSOR_LM35,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]   
 pub enum IoIf_PeripheralType{
@@ -40,7 +43,7 @@ pub enum IoIf_RxMode{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]   
 pub struct IoIf_RxPdu{
     pub index : usize,
-    pub id : u32,
+    pub id : PduIdType,
     pub peripheral: IoIf_PeripheralType,
     pub channel: IoIf_RxChannelType,
     pub mode: IoIf_RxMode,
@@ -48,14 +51,14 @@ pub struct IoIf_RxPdu{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]   
 pub struct IoIf_TxPdu{
     pub index : usize,
-    pub id : u32,
+    pub id : PduIdType,
     pub peripheral: IoIf_PeripheralType,
     pub channel: IoIf_TxChannelType,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]   
 pub struct IoIf_TxPduGroup{
     pub index : usize,
-    pub id : u32,
+    pub id : PduIdType,
     pub peripheral: IoIf_PeripheralType,
     pub channel_group: IoIf_TxChannelGroupType,
 }
@@ -78,9 +81,22 @@ pub enum IoIf_OutputType {
     TOGGLE
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IoIf_ConfirmationStatus{
-    IDLE,
-    PENDING,
+pub enum IoIf_ConfirmationType {
     CONFIRMED_OK,
     CONFIRMED_NOT_OK,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IoIf_PduStatusType{
+    IOIF_IDLE,
+    IOIF_PENDING,
+    IOIF_BUSY,
+    IOIF_COMPLETED,
+    IOIF_ERROR,
+}
+
+pub struct IoIf_PduRuntimeStatus {
+    pub pdu_id: PduIdType,
+    pub status: AtomicU8,
+}
+pub const IOIF_INVALID_PDU_ID: PduIdType = 0xFFFF;

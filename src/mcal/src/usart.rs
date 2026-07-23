@@ -17,7 +17,6 @@ use crate::register::usart_type::{get_usart_register, UsartNumber};
 use core::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use crate::mcal::cfg::usart_cfg::{USART_CHANNEL_CONFIG};
 use crate::bsw::usartif::usartif_tx::{usartif_tx_confirmation_by_channel};
-use crate::bsw::usartif::usartif_rx::{usartif_rxindication_by_channel};
 
 
 // Track initialization status for USART1, USART2, and USART6
@@ -33,11 +32,12 @@ static USART_TX_LEN: [AtomicUsize; 3] = [const { AtomicUsize::new(0) }; 3];
 static USART_TX_INDEX: [AtomicUsize; 3] = [const { AtomicUsize::new(0) }; 3];
 static USART_TX_BUSY: [AtomicBool; 3] = [const { AtomicBool::new(false) }; 3];
 static USART_RX_BUSY: [AtomicBool; 3] = [const { AtomicBool::new(false) }; 3];
-static USART_RX_LEN: [AtomicUsize; 3] = [const { AtomicUsize::new(0) }; 3];
-static USART_RX_INDEX: [AtomicUsize; 3] = [const { AtomicUsize::new(0) }; 3];
-static USART_RX_DONE: [AtomicBool; 3] = [const { AtomicBool::new(false) }; 3];
 static USART_TX_DONE: [AtomicBool; 3] = [const { AtomicBool::new(false) }; 3];
 static USART_ERROR: [AtomicBool; 3] = [const { AtomicBool::new(false) }; 3];
+
+// This array is used to track the head and tail indices for each USART channel's TX and RX buffers. It helps manage the circular buffer behavior for asynchronous communication.
+static USART_HEAD : [AtomicUsize; 3] = [const { AtomicUsize::new(0) }; 3];
+static USART_TAIL : [AtomicUsize; 3] = [const { AtomicUsize::new(0) }; 3];
 
 /* Init */
 fn usart_channel_to_index(usart_number: UsartNumber) -> usize {
@@ -66,6 +66,7 @@ pub fn usart_init() {
             if channel.mode == UsartTxRxMode::INTERRUPT {
                 usart_init_interrupt(channel);
             }
+            usart_rx_ring_clear(channel.usart_number);
             usart_set_error(channel.usart_number, false);
             USART_CHANNELS_INITIALIZED[index].store(true, Ordering::SeqCst);
         }else{
@@ -194,71 +195,49 @@ pub fn usart_write_byte_non_blocking(usart_number: UsartNumber, byte: u8) -> Usa
 }
 
 /* Helper functions for USART state management */
-fn usart_set_len(usart_number: UsartNumber, len: usize, isTx: bool) {
+fn usart_tx_set_len(usart_number: UsartNumber, len: usize) {
     let index = usart_channel_to_index(usart_number);
-    if isTx {
-        USART_TX_LEN[index].store(len, Ordering::SeqCst);
-    } else {
-        USART_RX_LEN[index].store(len, Ordering::SeqCst);
-    }
+    USART_TX_LEN[index].store(len, Ordering::SeqCst);
 }
-fn usart_set_index(usart_number: UsartNumber, index: usize, isTx: bool) {
+fn usart_tx_set_index(usart_number: UsartNumber, index: usize) {
     let channel_index = usart_channel_to_index(usart_number);
-    if isTx {
-        USART_TX_INDEX[channel_index].store(index, Ordering::SeqCst);
-    } else {
-        USART_RX_INDEX[channel_index].store(index, Ordering::SeqCst);
-    }
+    USART_TX_INDEX[channel_index].store(index, Ordering::SeqCst);
 }
-fn usart_set_busy(usart_number: UsartNumber, busy: bool, isTx: bool) {
+fn usart_set_busy(usart_number: UsartNumber, busy: bool, is_tx: bool) {
     let channel_index = usart_channel_to_index(usart_number);
-    if isTx {
+    if is_tx {
         USART_TX_BUSY[channel_index].store(busy, Ordering::SeqCst);
     } else {
         USART_RX_BUSY[channel_index].store(busy, Ordering::SeqCst);
     }
 }
-fn usart_set_done(usart_number: UsartNumber, done: bool, isTx: bool) {
+fn usart_tx_set_done(usart_number: UsartNumber, done: bool) {
     let channel_index = usart_channel_to_index(usart_number);
-    if isTx {
-        USART_TX_DONE[channel_index].store(done, Ordering::SeqCst);
-    } else {
-        USART_RX_DONE[channel_index].store(done, Ordering::SeqCst);
-    }
+    USART_TX_DONE[channel_index].store(done, Ordering::SeqCst);
 }
 
-fn usart_get_len(usart_number: UsartNumber, isTx: bool) -> usize {
+fn usart_tx_get_len(usart_number: UsartNumber) -> usize {
     let channel_index = usart_channel_to_index(usart_number);
-    if isTx {
-        USART_TX_LEN[channel_index].load(Ordering::SeqCst)
-    } else {
-        USART_RX_LEN[channel_index].load(Ordering::SeqCst)
-    }
+    USART_TX_LEN[channel_index].load(Ordering::SeqCst)
 }
-fn usart_get_index(usart_number: UsartNumber, isTx: bool) -> usize {
+
+fn usart_tx_get_index(usart_number: UsartNumber) -> usize {
     let channel_index = usart_channel_to_index(usart_number);
-    if isTx {
-        USART_TX_INDEX[channel_index].load(Ordering::SeqCst)
-    } else {
-        USART_RX_INDEX[channel_index].load(Ordering::SeqCst)
-    }
+    USART_TX_INDEX[channel_index].load(Ordering::SeqCst)
 }
-fn usart_get_busy(usart_number: UsartNumber, isTx: bool) -> bool {
+fn usart_get_busy(usart_number: UsartNumber, is_tx: bool) -> bool {
     let channel_index = usart_channel_to_index(usart_number);
-    if isTx {
+    if is_tx {
         USART_TX_BUSY[channel_index].load(Ordering::SeqCst)
     } else {
         USART_RX_BUSY[channel_index].load(Ordering::SeqCst)
     }
 }
-fn usart_get_done(usart_number: UsartNumber, isTx: bool) -> bool {
+fn usart_tx_get_done(usart_number: UsartNumber) -> bool {
     let channel_index = usart_channel_to_index(usart_number);
-    if isTx {
-        USART_TX_DONE[channel_index].load(Ordering::SeqCst)
-    } else {
-        USART_RX_DONE[channel_index].load(Ordering::SeqCst)
-    }
+    USART_TX_DONE[channel_index].load(Ordering::SeqCst)
 }
+
 fn usart_set_error(usart_number: UsartNumber, error: bool) {
     let channel_index = usart_channel_to_index(usart_number);
     USART_ERROR[channel_index].store(error, Ordering::SeqCst);
@@ -267,7 +246,7 @@ fn usart_get_error(usart_number: UsartNumber) -> bool {
     let channel_index = usart_channel_to_index(usart_number);
     USART_ERROR[channel_index].load(Ordering::SeqCst)
 }
-fn usart_set_tx_data_to_channel(usart_number: UsartNumber, index: usize, byte: u8) {
+fn usart_tx_set_data_to_channel(usart_number: UsartNumber, index: usize, byte: u8) {
     let channel_index = usart_channel_to_index(usart_number);
     if channel_index == 0 {
         USART1_TX_BUFFER[index].store(byte, Ordering::SeqCst);
@@ -318,10 +297,10 @@ fn usart_start_transmit_async(usart_number: UsartNumber, len: usize) -> UsartRet
         return UsartReturnType::USART_BUSY;
     }
 
-    usart_set_index(usart_number, 0, true);
-    usart_set_len(usart_number, len, true);
+    usart_tx_set_index(usart_number, 0);
+    usart_tx_set_len(usart_number, len);
     usart_set_busy(usart_number, true, true);
-    usart_set_done(usart_number, false, true);
+    usart_tx_set_done(usart_number, false);
     UsartReturnType::USART_OK
 }
 
@@ -332,7 +311,7 @@ fn usart_send_async(usart_number: UsartNumber, data: &[u8]) -> UsartReturnType {
             return UsartReturnType::USART_NOT_OK; // Data length exceeds buffer size
         }
         for index in 0..data.len() {
-            usart_set_tx_data_to_channel(usart_number, index, data[index]);
+            usart_tx_set_data_to_channel(usart_number, index, data[index]);
         }
         usart_enable_tx_interrupt(usart);
         UsartReturnType::USART_OK
@@ -365,7 +344,7 @@ pub fn usart_get_tx_status(usart_number: UsartNumber) -> UsartTxStatus {
         UsartTxStatus::Error
     } else if usart_get_busy(usart_number, true) {
         UsartTxStatus::Busy
-    } else if usart_get_done(usart_number, true) {
+    } else if usart_tx_get_done(usart_number) {
         UsartTxStatus::Completed
     } else {
         UsartTxStatus::Idle
@@ -385,10 +364,7 @@ pub fn usart_start_receive_async(usart_number: UsartNumber, len: usize) -> Usart
         if len == 0 || len > USART2_RX_BUFFER.len() {
             return UsartReturnType::USART_NOT_OK;
         }
-        usart_set_index(usart_number, 0, false);
-        usart_set_len(usart_number, len, false);
         usart_set_busy(usart_number, true, false);
-        usart_set_done(usart_number, false, false);
         usart_enable_rx_interrupt(usart);
         UsartReturnType::USART_OK
     } else {
@@ -401,8 +377,6 @@ pub fn usart_get_rx_status(usart_number: UsartNumber) -> UsartRxStatus {
         UsartRxStatus::Error
     } else if usart_get_busy(usart_number, false) {
         UsartRxStatus::Busy
-    } else if usart_get_done(usart_number, false) {
-        UsartRxStatus::Completed
     } else {
         UsartRxStatus::Idle
     }
@@ -419,16 +393,54 @@ pub fn usart_clear_error_status(usart_number: UsartNumber) {
     usart_set_error(usart_number, false);
 }
 
-pub fn usart_read_received_async_data(usart_number: UsartNumber, buffer: &mut [u8]) -> usize {
-    if !usart_get_done(usart_number, false) {
-        return 0;
+fn usart_get_rx_buffer_length(usart_number: UsartNumber) -> usize {
+    match usart_number {
+        UsartNumber::USART1 => USART1_RX_BUFFER.len(),
+        UsartNumber::USART2 => USART2_RX_BUFFER.len(),
+        UsartNumber::USART6 => USART6_RX_BUFFER.len(),
     }
-    let len = core::cmp::min(buffer.len(), usart_get_len(usart_number, false));
-    for index in 0..len {
-        buffer[index] = usart_get_rx_data_from_channel(usart_number, index);
+}
+
+/// Ring buffer management for RX
+fn usart_rx_ring_push(usart_number: UsartNumber, byte: u8) {
+    let channel_index = usart_channel_to_index(usart_number);
+    let head = USART_HEAD[channel_index].load(Ordering::SeqCst);
+    let tail = USART_TAIL[channel_index].load(Ordering::SeqCst);
+    let rx_buffer_length = usart_get_rx_buffer_length(usart_number);
+    let next_head = (head + 1) % rx_buffer_length;
+    if next_head != tail {
+        // There is space in the buffer
+        usart_set_rx_data_to_channel(usart_number, head, byte);
+        USART_HEAD[channel_index].store(next_head, Ordering::SeqCst);
+    } else {
+        // Buffer overflow, handle error if needed
+        usart_set_error(usart_number, true);
     }
-    usart_set_done(usart_number, false, false);
-    len
+}
+pub fn usart_rx_ring_pop(usart_number: UsartNumber) -> Option<u8> {
+    let channel_index = usart_channel_to_index(usart_number);
+    let head = USART_HEAD[channel_index].load(Ordering::SeqCst);
+    let tail = USART_TAIL[channel_index].load(Ordering::SeqCst);
+    if head == tail {
+        // Buffer is empty
+        None
+    } else {
+        let byte = usart_get_rx_data_from_channel(usart_number, tail);
+        let next_tail = (tail + 1) % usart_get_rx_buffer_length(usart_number);
+        USART_TAIL[channel_index].store(next_tail, Ordering::SeqCst);
+        Some(byte)
+    }
+}
+pub fn usart_rx_ring_is_empty(usart_number: UsartNumber) -> bool {
+    let channel_index = usart_channel_to_index(usart_number);
+    let head = USART_HEAD[channel_index].load(Ordering::SeqCst);
+    let tail = USART_TAIL[channel_index].load(Ordering::SeqCst);
+    head == tail
+}
+pub fn usart_rx_ring_clear(usart_number: UsartNumber) {
+    let channel_index = usart_channel_to_index(usart_number);
+    USART_HEAD[channel_index].store(0, Ordering::SeqCst);
+    USART_TAIL[channel_index].store(0, Ordering::SeqCst);
 }
 /* TX confirmation */
 pub fn usart_get_tx_complete_status(usart_number: UsartNumber) -> UsartReturnType {
@@ -451,41 +463,24 @@ pub fn usart_irq_handler(usart_number: UsartNumber) {
         let iserror = usart_has_error(usart);
         if iserror {
             usart_set_error(usart_number, true);
-            usart_set_busy(usart_number, false, false);
-            usart_set_done(usart_number, false, false);
             usart_disable_rx_interrupt(usart);
             usart_clear_error_flags(usart);
             return;
         }
-        if !usart_rx_buffer_is_empty(usart) && usart_get_busy(usart_number, false) { // RXNE flag
-            let index = usart_get_index(usart_number, false);
-            if index < usart_get_len(usart_number, false) {
-                let byte = usart_read_direct(usart_number);
-                usart_set_rx_data_to_channel(usart_number, index, byte);
-                let next_index = usart_get_index(usart_number, false) + 1;
-                usart_set_index(usart_number, next_index, false);
-                // Check if we have received the expected number of bytes
-                if next_index >= usart_get_len(usart_number, false) {
-                    usart_set_busy(usart_number, false, false); // Reception complete
-                    // Set the reception done flag
-                    usart_set_done(usart_number, true, false);
-                    // Call the reception indication callback
-                    usartif_rxindication_by_channel(usart_number);
-                    // Optionally, disable RX interrupt if no more data to receive
-                    usart_disable_rx_interrupt(usart);
-                }
-            }
+        if !usart_rx_buffer_is_empty(usart) { // RXNE flag
+            let byte = usart_read_direct(usart_number);
+            usart_rx_ring_push(usart_number, byte);
         }
         // Handle TXE (Transmit Data Register Empty) interrupt
         if !usart_tx_buffer_is_full(usart) && usart_get_busy(usart_number, true) { // TXE flag
             // Handle the transmit event (e.g., send the next byte from a buffer)
-            let index = usart_get_index(usart_number, true);
-            if index < usart_get_len(usart_number, true) {
+            let index = usart_tx_get_index(usart_number);
+            if index < usart_tx_get_len(usart_number) {
                 let byte = usart_get_tx_data_from_channel(usart_number, index);
                 usart_write_direct(usart_number, byte);
-                let next_index = usart_get_index(usart_number, true) + 1;
-                usart_set_index(usart_number, next_index, true);
-                if next_index >= usart_get_len(usart_number, true) {
+                let next_index = usart_tx_get_index(usart_number) + 1;
+                usart_tx_set_index(usart_number, next_index);
+                if next_index >= usart_tx_get_len(usart_number) {
                     // All bytes have been sent, disable TX interrupt
                     usart_disable_tx_interrupt(usart);
                     // Optionally, you can set a flag to indicate that transmission is complete

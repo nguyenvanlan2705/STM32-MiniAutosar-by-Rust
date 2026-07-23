@@ -187,7 +187,12 @@ pub extern "C" fn EXTI15_10_IRQHandler() {
         EXTILINE::LINE15,
     ]);
 }
-
+// ADC Interrupt Handler
+#[unsafe(no_mangle)]
+pub extern "C" fn ADC_IRQn_Handler() {
+    // Handle ADC interrupt
+    // You can add your ADC interrupt handling code here
+}
 // ---------------------------------------------------------------------------
 // Bảng vector đặt tại đầu FLASH.
 // Word đầu tiên (initial stack pointer) do linker script tự phát ra.
@@ -240,7 +245,7 @@ pub static __INTERRUPTS: [Vector; 86] = [
     Vector { handler: DefaultHandler },          // 15 DMA1_Stream4
     Vector { handler: DefaultHandler },          // 16 DMA1_Stream5
     Vector { handler: DefaultHandler },          // 17 DMA1_Stream6
-    Vector { handler: DefaultHandler },          // 18 ADC
+    Vector { handler: ADC_IRQn_Handler},          // 18 ADC
     Vector { reserved: 0 },                      // 19 Reserved
     Vector { reserved: 0 },                      // 20 Reserved
     Vector { reserved: 0 },                      // 21 Reserved

@@ -9,7 +9,6 @@ use crate::register::nvic_type::IRQn;
 pub enum UsartRxStatus {
     Idle,
     Busy,
-    Completed,
     Error,
 }
 

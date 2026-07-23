@@ -16,7 +16,7 @@ Main goals:
 ## Current Architecture
 
 ```text
-Application                  active for button/LED demo runnables
+Application                  active for button/LED/temperature demo runnables
     |
     v
 RTE                          scaffolded; not active in main.rs yet
@@ -24,8 +24,8 @@ RTE                          scaffolded; not active in main.rs yet
     v
 BSW                          partially active
     |
-    +-- IoHwAb              active for button/LED demo
-    +-- IoIf                RX indication and TX confirmation draft active for GPIO demo
+    +-- IoHwAb              active for button/LED/sensor demo
+    +-- IoIf                RX indication, RX value read, and TX confirmation drafts
     +-- Management/ComM     draft requested/current mode manager
     +-- Services/Scheduler  cyclic scheduler driven by SysTick tick count
     +-- PduR / Com          future idea
@@ -37,6 +37,7 @@ MCAL                         active
     +-- Dio
     +-- Exti
     +-- Usart               draft polling init/write/read path
+    +-- Adc                 basic ADC1 polling/non-blocking split
     +-- SysTick             active as 1 ms system tick source
     +-- Nvic
     |
@@ -50,6 +51,7 @@ Register Layer
     +-- NVIC
     +-- SysTick
     +-- USART
+    +-- ADC
     |
     v
 Startup / Vector Table
@@ -154,6 +156,33 @@ Current demo hardware mapping:
 | Blue LED | PD15 | IoIf TX -> IoHwAb LED -> Dio -> GPIO |
 | USART2 TX | PA2 | Port AF7 -> MCAL Usart -> USART2 |
 | USART2 RX | PA3 | Port AF7 -> MCAL Usart -> USART2 |
+| LM35 sensor draft | PB0 / ADC1_IN8 | Port analog -> MCAL Adc -> IoHwAb Sensor -> IoIf RX |
+
+Current ADC sensor flow:
+
+```text
+scheduler 10 ms runnable
+    |
+    v
+iohwab_sensor_mainfunction()
+    |
+    +-- IDLE: start ADC conversion for configured sensor channel
+    |
+    +-- CONVERTING: check EOC once, read DR only when conversion is complete
+    |
+    +-- COMPLETE: keep latest raw value for IoIf/App
+    |
+    v
+temperature app
+    |
+    v
+ioif_read_rx_value(0x101, &mut raw)
+    |
+    v
+IoHwAb Sensor returns cached latest ADC value
+```
+
+The ADC path is intentionally non-blocking. The scheduler runnable does not wait in a loop for conversion completion.
 
 ## Current Build Status
 
@@ -327,6 +356,12 @@ USART as Virtual Bus
 UsartIf logical PDU wrapper
     |
     v
+ADC sensor abstraction through IoHwAb/IoIf
+    |
+    v
+SPI1/SPI2 loopback and future MCP2515 path
+    |
+    v
 PduR / Com
     |
     v
@@ -350,8 +385,58 @@ USART2 TC interrupt -> MCAL USART -> UsartIf TxConfirmation
 Current USART RX direction:
 
 ```text
-Scheduler/App draft -> UsartIf saves RX buffer -> MCAL USART2 async RX -> USART2 IRQ
-USART2 RX complete interrupt -> MCAL USART -> UsartIf RxIndication -> saved upper buffer
+Scheduler/App draft -> UsartIf StartOfReception saves upper buffer -> MCAL USART2 RX stream
+USART2 RXNE interrupt -> MCAL USART pushes byte into RX ring buffer
+Scheduler 5 ms runnable -> UsartIf RX processing pops ring bytes into saved upper buffer
 ```
 
-USART is currently treated as a fixed-length byte stream for testing. A later transport/protocol layer can add delimiters, length fields, CRC, queues, or routing through PduR.
+USART RX is currently a simple delimiter/buffer-length test on top of a MCAL ring buffer. A later transport/protocol layer can add stronger framing such as length fields, CRC, queues, or routing through PduR.
+
+Current SPI direction:
+
+```text
+MCAL SPI config -> spi_init()
+    |
+    +-- deselect onboard SPI sensor by forcing PE3 high
+    +-- initialize SPI1 as master
+    +-- initialize SPI2 as slave
+
+SPI2 preload byte -> SPI1 master transfer -> SPI1 receives MISO byte and SPI2 receives MOSI byte
+```
+
+The PE3 step is board-specific for STM32F411 Discovery.
+It protects SPI1 MISO from the onboard SPI sensor during external loopback tests.
+
+Current MCP2515 direction:
+
+```text
+MCAL external MCP2515 config
+    |
+    +-- MCP2515 CS through Dio_ChannelType::Mcp2515Cs
+    +-- MCP2515 INT through optional Dio_ChannelType::mcp2515Int
+    +-- SPI channel through SPINumberType::SPI1
+    |
+    v
+MCP2515 driver
+    |
+    +-- uses MCAL SPI byte-level transfer helper
+    +-- uses MCAL Dio to control chip select
+    |
+    v
+MCP2515 registers
+```
+
+Architectural note:
+
+The current SPI MCAL is still a direct peripheral bring-up driver.
+It does not yet model the AUTOSAR SPI concepts of Channel, Job, and Sequence.
+
+Target direction:
+
+```text
+Spi Channel -> configured data buffer/frame
+Spi Job     -> chip-select controlled transfer
+Spi Sequence -> ordered jobs submitted to the SPI driver
+```
+
+For now, MCP2515 is allowed to use the byte-level SPI helper directly so the external CAN controller can be validated before the SPI abstraction is refined.

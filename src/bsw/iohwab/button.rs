@@ -41,3 +41,4 @@ pub fn read_button_state(button: Button) -> Dio_LevelType {
     let channel = button_to_channel(button);
     dio_readchannel(channel)
 }
+

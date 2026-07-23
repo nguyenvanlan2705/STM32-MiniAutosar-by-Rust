@@ -7,25 +7,31 @@ mod register;
 mod startup;
 mod bsw;
 mod app;
-use crate::bsw::{
-    management::comm::{comm::{comm_requestcommode},
-                       comm_type::{ComMRequestedMode},},
-    cfg::comm_cfg::ComMUser,
-};
-use crate::bsw::services::scheduler::{scheduler_oneshot_task, scheduler_mainfunction, scheduler_init};
-use crate::mcal::mcu::{mcu_init, mcu_init_systick_1ms, };
+use crate::{bsw::{
+    cfg::comm_cfg::ComMUser, management::comm::{comm::comm_requestcommode, comm_type::ComMRequestedMode,},
+}};
+use crate::bsw::services::scheduler::{scheduler_oneshot_task};
+use crate::mcal::external::mcp2515::{mcp2515_read_register_ctrl, mcp2515_read_register_status};
+use crate::mcal::external::mcp2515_type::{Mcp2515DeviceId};
 
+fn delay(count: u32) {
+    for _ in 0..count {
+        cortex_m::asm::nop();
+    }
+}
+
+static mut MCP2515_CTRL_REG: u8 = 0;
+static mut MCP2515_STATUS_REG: u8 = 0;
 pub fn main() -> ! {
-    // Khởi tạo các module MCAL
-    mcu_init();
-    mcu_init_systick_1ms();
-    mcal::port::port_init();
-    mcal::exti::exti_init();
-    scheduler_init();
     scheduler_oneshot_task();
     comm_requestcommode(ComMUser::APP_GPIO, ComMRequestedMode::FULL_COMMUNICATION);
-    //let mut count: u32 = 0;
     loop {
-        scheduler_mainfunction();
+        let mcp2515_read_register_ctrl = mcp2515_read_register_ctrl(Mcp2515DeviceId::MCP2515_1);
+        let mcp2515_read_register_status = mcp2515_read_register_status(Mcp2515DeviceId::MCP2515_1);
+        unsafe {
+            MCP2515_CTRL_REG = mcp2515_read_register_ctrl;
+            MCP2515_STATUS_REG = mcp2515_read_register_status;
+        }
+        delay(1000000);
     }
 }

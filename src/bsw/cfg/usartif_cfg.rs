@@ -38,6 +38,8 @@ const USART_RXPDUCONFIG : UsartIf_RxPduConfig = UsartIf_RxPduConfig {
             rx_pdu_length: 16,
             lower_channel: UsartNumber::USART2,
             upper_id: 0x00,
+            rx_timeout: 1000, // Timeout in milliseconds
+            crc: true, // Enable CRC check for this PDU
         },
     ],
 };
